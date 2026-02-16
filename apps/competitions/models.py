@@ -1,12 +1,16 @@
 import enum
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from apps.db.base import Base
-from apps.db.base import TimestampMixin
+# Предполагается, что TimestampMixin добавляет created_at/updated_at
+from apps.db.mixins import TimestampMixin
 
+if TYPE_CHECKING:
+    from apps.clubs.models import Club
 
 class CompetitionStatus(str, enum.Enum):
     DRAFT = "draft"
@@ -14,14 +18,14 @@ class CompetitionStatus(str, enum.Enum):
     FINISHED = "finished"
     CANCELED = "canceled"
 
-
 class Competition(Base, TimestampMixin):
-    __tablename__ = "competition"
+    __tablename__ = "competitions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
+    # Исправлено: ссылка на таблицу 'clubs', а не 'club'
     club_id: Mapped[int] = mapped_column(
-        ForeignKey("club.id", ondelete="CASCADE"),
+        ForeignKey("clubs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -34,19 +38,14 @@ class Competition(Base, TimestampMixin):
 
     status: Mapped[CompetitionStatus] = mapped_column(
         Enum(CompetitionStatus, name="competition_status"),
+        default=CompetitionStatus.DRAFT,
         nullable=False,
         index=True,
-        server_default=CompetitionStatus.DRAFT.value,
     )
 
-    club: Mapped["Club"] = relationship(back_populates="competitions")
+    # Связь с клубом-организатором
+    club: Mapped["Club"] = relationship("Club", back_populates="competitions", lazy="selectin")
 
     __table_args__ = (
-        Index("ix_competition_club_status", "club_id", "status"),
         Index("ix_competition_dates", "starts_at", "ends_at"),
     )
-
-
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from apps.clubs.models import Club
