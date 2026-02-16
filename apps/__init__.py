@@ -1,2 +1,0 @@
-def organization():
-    return None
