@@ -1,0 +1,2 @@
+def organization():
+    return None
