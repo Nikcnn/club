@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     S3_BUCKET_PUBLIC: str = "public"
     S3_BUCKET_PRIVATE: str = "private"
 
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "admin"
+
     # Project Info
     PROJECT_NAME: str = "ClubVerse API"
     API_V1_STR: str = "" # Если нужен префикс /api/v1
