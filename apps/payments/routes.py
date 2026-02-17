@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.db.dependencies import get_db
@@ -16,14 +18,20 @@ router = APIRouter(prefix="/payments", tags=["Payments"])
 async def initiate_payment(
     schema: PaymentInitiate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    idempotency_key: Optional[str] = Header(default=None, alias="X-Idempotency-Key"),
 ):
     """
     Шаг 1: Пользователь нажимает "Оплатить".
     Возвращает ссылку на оплату (checkout_url).
     """
     try:
-        return await PaymentService.initiate_payment(db, schema, current_user.id)
+        return await PaymentService.initiate_payment(
+            db,
+            schema,
+            current_user.id,
+            idempotency_key=idempotency_key,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

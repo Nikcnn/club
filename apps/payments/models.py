@@ -36,6 +36,7 @@ class Payment(Base, TimestampMixin):
         index=True,
     )
     provider_payment_id: Mapped[str] = mapped_column(String(100))
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True, index=True)
     checkout_url: Mapped[Optional[str]] = mapped_column(String(500))
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     status: Mapped[PaymentStatus] = mapped_column(

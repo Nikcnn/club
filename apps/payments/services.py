@@ -16,7 +16,8 @@ class PaymentService:
     async def initiate_payment(
         db: AsyncSession,
         schema: PaymentInitiate,
-        user_id: int
+        user_id: int,
+        idempotency_key: Optional[str] = None
     ) -> Payment:
         """
         Создание платежа и генерация ссылки.
@@ -35,30 +36,53 @@ class PaymentService:
         if investment.status == InvestmentStatus.PAID:
             raise ValueError("Эта инвестиция уже оплачена")
 
-        # 2. Проверяем, нет ли уже активного платежа (чтобы не дублировать)
-        # (Опционально: можно отменять старый и создавать новый)
+        # 2. Если передан idempotency key и мы уже выполняли такой запрос —
+        # возвращаем ранее созданный платеж без повторной инициации.
+        if idempotency_key:
+            idempotent_payment_q = select(Payment).where(Payment.idempotency_key == idempotency_key)
+            idempotent_payment = (await db.execute(idempotent_payment_q)).scalar_one_or_none()
+            if idempotent_payment:
+                if idempotent_payment.investment_id != investment.id:
+                    raise ValueError("Idempotency ключ уже использован для другой инвестиции")
+                if idempotent_payment.provider != schema.provider:
+                    raise ValueError("Idempotency ключ уже использован с другим провайдером")
+                return idempotent_payment
+
+        # 3. Проверяем, нет ли уже активного платежа (чтобы не дублировать)
         existing_payment_q = select(Payment).where(Payment.investment_id == investment.id)
         existing_payment = (await db.execute(existing_payment_q)).scalar_one_or_none()
 
         if existing_payment and existing_payment.status == PaymentStatus.SUCCESS:
             raise ValueError("Платеж уже прошел успешно")
 
-        # 3. Имитация запроса к платежной системе (получение ID транзакции)
+        if existing_payment and existing_payment.status == PaymentStatus.PENDING:
+            if idempotency_key and existing_payment.idempotency_key and existing_payment.idempotency_key != idempotency_key:
+                raise ValueError("Для этой инвестиции уже есть активный платеж с другим idempotency ключом")
+            if idempotency_key and not existing_payment.idempotency_key:
+                existing_payment.idempotency_key = idempotency_key
+                await db.commit()
+                await db.refresh(existing_payment)
+            return existing_payment
+
+        # 4. Имитация запроса к платежной системе (получение ID транзакции)
         provider_id = str(uuid.uuid4())  # ID от PayBox
         checkout_url = f"https://paybox.money/pay/{provider_id}"  # Ссылка на форму
 
-        # 4. Создаем или обновляем запись о платеже
+        # 5. Создаем или обновляем запись о платеже
         if existing_payment:
             payment = existing_payment
             payment.provider_payment_id = provider_id
             payment.checkout_url = checkout_url
             payment.status = PaymentStatus.PENDING
+            if idempotency_key:
+                payment.idempotency_key = idempotency_key
         else:
             payment = Payment(
                 investment_id=investment.id,
                 amount=investment.amount,  # Берем сумму строго из инвестиции!
                 provider=schema.provider,
                 provider_payment_id=provider_id,
+                idempotency_key=idempotency_key,
                 checkout_url=checkout_url,
                 status=PaymentStatus.PENDING
             )
