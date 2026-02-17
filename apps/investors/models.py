@@ -22,7 +22,7 @@ class Investor(User):
     # Связь с инвестициями (lazy="selectin" для асинхронной подгрузки)
     investments: Mapped[List["Investment"]] = relationship(
         "Investment",
-        backref="investor",  # или back_populates, если настроено в Investment
+        back_populates="investor",
         lazy="selectin"
     )
 

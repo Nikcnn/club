@@ -29,6 +29,7 @@ class CompetitionUpdate(BaseModel):
 class CompetitionResponse(CompetitionBase):
     id: int
     club_id: int
+    photo_key: Optional[str] = None
     status: CompetitionStatus
     created_at: datetime
     updated_at: Optional[datetime] = None

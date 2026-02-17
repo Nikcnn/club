@@ -24,7 +24,7 @@ class ClubService:
         # 2. Создаем объект (SQLAlchemy сам разберется, что часть полей идет в users, часть в clubs)
         club = Club(
             email=schema.email,
-            password_hash=hashed_pw,  # Поле из модели User
+            hashed_password=hashed_pw,  # Поле из модели User
             role=UserRole.CLUB,  # Принудительно ставим роль
 
             name=schema.name,

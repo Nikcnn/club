@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
 
-from apps.funding.models import PaymentProvider, PaymentStatus
+from apps.payments.models import PaymentProvider, PaymentStatus
 
 # === INITIATE ===
 class PaymentInitiate(BaseModel):
