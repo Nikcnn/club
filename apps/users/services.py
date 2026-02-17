@@ -1,6 +1,4 @@
-from typing import Optional
-
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.core.security import get_password_hash, verify_password
@@ -11,13 +9,13 @@ from apps.users.schemas import UserCreateBase
 
 class UserService:
     @staticmethod
-    async def get_by_email(db: AsyncSession, email: str) -> Optional[User]:
+    async def get_by_email(db: AsyncSession, email: str) -> User | None:
         query = select(User).where(User.email == email)
         result = await db.execute(query)
         return result.scalars().first()
 
     @staticmethod
-    async def get_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
+    async def get_by_id(db: AsyncSession, user_id: int) -> User | None:
         query = select(User).where(User.id == user_id)
         result = await db.execute(query)
         return result.scalars().first()
@@ -38,7 +36,7 @@ class UserService:
         return user
 
     @staticmethod
-    async def authenticate(db: AsyncSession, email: str, password: str) -> Optional[User]:
+    async def authenticate(db: AsyncSession, email: str, password: str) -> User | None:
         user = await UserService.get_by_email(db, email)
         if not user:
             return None
@@ -49,7 +47,7 @@ class UserService:
         return user
 
     @staticmethod
-    async def get_current_news(db: AsyncSession, user_id: int):
+    async def get_current_news(db: AsyncSession, user_id: int) -> list[News]:
         """
         Возвращает ленту новостей.
         Аргумент user_id можно использовать для персонализации в будущем.
@@ -60,4 +58,4 @@ class UserService:
         result = await db.execute(query)
 
         # .scalars().all() возвращает СПИСОК объектов, что и нужно для List[NewsResponse]
-        return result.scalars().all()
+        return list(result.scalars().all())

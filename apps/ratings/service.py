@@ -1,6 +1,7 @@
-from typing import Optional
 from decimal import Decimal
-from sqlalchemy import select, func, update
+from typing import cast
+
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,9 +45,9 @@ class RatingService:
         result = await db.execute(stmt)
         stats = result.one()
 
-        new_count = stats.count
+        new_count = cast(int, stats.count)
         # Если отзывов нет, avg вернет None, заменяем на 0
-        new_avg = stats.avg if stats.avg is not None else 0
+        new_avg = cast(Decimal | int, stats.avg if stats.avg is not None else 0)
 
         # 2. Upsert (Обновляем или Создаем запись рейтинга)
         # Для PostgreSQL используем insert().on_conflict_do_update()
@@ -94,15 +95,16 @@ class RatingService:
         result = await db.execute(stmt)
         count, avg = result.one()
 
-        new_avg = avg if avg is not None else 0
+        typed_count = cast(int, count)
+        new_avg = cast(Decimal | int, avg if avg is not None else 0)
 
         stmt = insert(OrganizationRating).values(
             organization_id=org_id,
             avg_score=new_avg,
-            review_count=count
+            review_count=typed_count
         ).on_conflict_do_update(
             index_elements=['organization_id'],
-            set_={"avg_score": new_avg, "review_count": count, "updated_at": func.now()}
+            set_={"avg_score": new_avg, "review_count": typed_count, "updated_at": func.now()}
         ).returning(OrganizationRating)
 
         result = await db.execute(stmt)
