@@ -6,14 +6,24 @@ from fastapi import HTTPException, UploadFile
 from apps.core.settings import settings
 
 
-def _build_public_object_url(bucket: str, object_name: str) -> str:
+def build_public_url(object_key: str, bucket: str | None = None) -> str:
+    """
+    Построить публичный URL для объекта в бакете по его ключу.
+    Возвращает endpoint/bucket/object_key.
+    """
     endpoint = (settings.S3_ENDPOINT_URL or "").rstrip("/")
     if not endpoint:
         raise HTTPException(status_code=500, detail="S3_ENDPOINT_URL is not configured")
-    return f"{endpoint}/{bucket}/{object_name}"
+    _bucket = bucket or settings.S3_BUCKET_PUBLIC
+    return f"{endpoint}/{_bucket}/{object_key}"
 
 
 async def upload_image_to_minio(file: UploadFile, folder: str) -> str:
+    """
+    Загружает изображение в MinIO в публичный бакет и возвращает КЛЮЧ объекта (object_key), а не URL.
+    Пример возвращаемого значения: "users/42/0f1a2b3c4d.png".
+    Чтобы получить публичный URL, используйте build_public_url(object_key).
+    """
     if not settings.S3_ACCESS_KEY or not settings.S3_SECRET_KEY:
         raise HTTPException(status_code=500, detail="MinIO credentials are not configured")
 
@@ -54,4 +64,5 @@ async def upload_image_to_minio(file: UploadFile, folder: str) -> str:
         content_type=file.content_type,
     )
 
-    return _build_public_object_url(bucket, object_name)
+    # Возвращаем ключ (для хранения в *_key колонках)
+    return object_name
