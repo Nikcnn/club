@@ -15,6 +15,7 @@ from apps.payments.routes import router as payments_router
 from apps.competitions.routes import router as competitions_router
 from apps.news.routes import router as news_router
 from apps.reviews.routes import router as reviews_router
+from apps.ratings.routes import router as ratings_router
 
 # Создание приложения
 app = FastAPI(
