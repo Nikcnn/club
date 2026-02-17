@@ -40,9 +40,16 @@ class OrganizationReview(ReviewBase):
     __tablename__ = "organization_reviews"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    author_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
 
     organization: Mapped["Organization"] = relationship(
         "Organization",
@@ -60,3 +67,4 @@ class OrganizationReview(ReviewBase):
         UniqueConstraint("organization_id", "user_id", name="uq_org_review_user"),
         CheckConstraint("score >= 1 AND score <= 5", name="check_org_review_score"),
     )
+

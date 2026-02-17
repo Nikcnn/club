@@ -39,7 +39,7 @@ class Organization(User):
     org_reviews = relationship(
         "OrganizationReview",
         back_populates="author",
-        foreign_keys="OrganizationReview.author_id",
+        foreign_keys="OrganizationReview.user_id",
     )
 
     # Рейтинг (One-to-One)

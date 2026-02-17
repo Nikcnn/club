@@ -42,7 +42,7 @@ class User(Base, TimestampMixin):
         cascade="all, delete-orphan",
         # Укажите здесь точное название поля внешнего ключа в модели OrganizationReview
         # Обычно это 'author_id' или 'user_id'
-        foreign_keys="[OrganizationReview.author_id]"
+        foreign_keys="[OrganizationReview.user_id]"
     )
 
 
