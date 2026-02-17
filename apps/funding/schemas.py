@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 # Импортируем Enums из моделей, чтобы не дублировать логику
 # (Предполагается, что они доступны в models.py, иначе можно определить здесь)
-from apps.funding.models import CampaignStatus, InvestmentStatus, PaymentStatus, FundingType
+from apps.funding.models import CampaignStatus, InvestmentStatus, FundingType
 
 # =======================
 # CAMPAIGNS

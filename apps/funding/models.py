@@ -1,15 +1,16 @@
 import enum
 from decimal import Decimal
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional  # Добавил List
-from sqlalchemy import ForeignKey, String, Text, Numeric, Enum, UniqueConstraint, Index, CheckConstraint, DateTime, func
+from typing import TYPE_CHECKING, List, Optional
+from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import ARRAY  # <--- ВАЖНО
+from sqlalchemy.dialects.postgresql import ARRAY
 
 from apps.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from apps.clubs.models import Club
+    from apps.payments.models import Payment
     from apps.users.models import User
 
 
@@ -25,6 +26,8 @@ class InvestmentStatus(str, enum.Enum):
     PENDING = "pending"
     PAID = "paid"
     CANCELED = "canceled"
+
+
 
 
 class FundingType(str, enum.Enum):  # <--- ДОБАВИЛ, ИНАЧЕ УПАДЕТ
@@ -100,6 +103,7 @@ class Investment(Base, TimestampMixin):
     campaign: Mapped["Campaign"] = relationship("Campaign", back_populates="investments")
     # Тут аккуратно: в модели Investor должно быть back_populates="investments"
     investor: Mapped["User"] = relationship("Investor", back_populates="investments")
+    payment: Mapped[Optional["Payment"]] = relationship("Payment", back_populates="investment", uselist=False)
 
     __table_args__ = (
         CheckConstraint("amount > 0", name="check_investment_amount_positive"),

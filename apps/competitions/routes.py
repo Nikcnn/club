@@ -1,10 +1,12 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.db.dependencies import get_db
 from apps.users.dependencies import get_current_user
 from apps.users.models import User, UserRole
+
+from apps.core.storage import upload_image_to_minio
 
 from apps.competitions.schemas import (
     CompetitionCreate,
@@ -76,3 +78,26 @@ async def update_competition(
         raise HTTPException(status_code=403, detail="Вы не владелец этого соревнования")
 
     return await CompetitionService.update(db, comp_id, schema)
+
+@router.post("/{comp_id}/photo", response_model=CompetitionResponse)
+async def upload_competition_photo(
+    comp_id: int,
+    photo: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Загрузка фото для соревнования (только владелец-клуб).
+    В БД сохраняется ссылка на объект в MinIO.
+    """
+    comp = await CompetitionService.get_by_id(db, comp_id)
+    if not comp:
+        raise HTTPException(status_code=404, detail="Соревнование не найдено")
+
+    if current_user.role != UserRole.CLUB or comp.club_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Вы не владелец этого соревнования")
+
+    comp.photo_key = await upload_image_to_minio(photo, folder=f"competitions/{comp_id}")
+    await db.commit()
+    await db.refresh(comp)
+    return comp
