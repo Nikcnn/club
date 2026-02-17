@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.core.security import create_access_token  # Функция генерации JWT
+from apps.core.security import create_access_token, create_refresh_token  # Функция генерации JWT
 from apps.core.settings import settings
 from apps.db.dependencies import get_db
 from apps.users.dependencies import get_current_user
@@ -33,37 +33,77 @@ async def register_member(
     return await UserService.create_member(db, schema)
 
 
+# === LOGIN ===
 @router.post("/login", response_model=Token)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Получение JWT токена (Login).
-    OAuth2PasswordRequestForm требует поля username (здесь email) и password.
-    """
-    user = await UserService.authenticate(db, form_data.username, form_data.password)
-
+    user = await UserService.authenticate(db, email=form_data.username, password=form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный email или пароль",
+            detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not user.is_active:
-        raise HTTPException(status_code=400, detail="Пользователь не активен")
+    # Генерируем ПАРУ токенов
+    access_token = create_access_token(subject=user.id)
+    new_refresh_token = create_refresh_token(subject=user.id)
 
-    # Генерация токена
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        subject=str(user.id),
-        expires_delta=access_token_expires
+    return {
+        "access_token": access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer"
+    }
+
+
+# === REFRESH ===
+@router.post("/refresh", response_model=Token)
+async def refresh_token(
+    refresh_token: str,  # Принимаем рефреш токен (обычно в body)
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Получение новой пары токенов по валидному Refresh Token.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
     )
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    try:
+        # Декодируем Refresh Token
+        payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        token_type: str = payload.get("type")
 
+        # Проверяем, что это именно REFRESH токен
+        if user_id is None or token_type != "refresh":
+            raise credentials_exception
 
+        # Проверяем, существует ли юзер (на случай бана)
+        user = await UserService.get_by_id(db, int(user_id))
+        if not user or not user.is_active:
+            raise credentials_exception
+
+        # Выдаем НОВЫЙ Access Token (Refresh можно оставить старый или выдать новый - зависит от политики)
+        # Обычно выдают новый Access, а Refresh оставляют, пока не истечет.
+        # Но для макс. безопасности можно перевыпускать оба (Rotation).
+
+        new_access_token = create_access_token(subject=user.id)
+        # Если хочешь продлевать сессию бесконечно - раскомментируй строку ниже:
+        # refresh_token = create_refresh_token(subject=user.id)
+
+        return {
+            "access_token": new_access_token,
+            "refresh_token": refresh_token,  # Возвращаем тот же или новый
+            "token_type": "bearer"
+        }
+
+    except JWTError:
+        raise credentials_exception
 @router.get("/me", response_model=UserResponseBase)
 async def read_users_me(current_user: User = Depends(get_current_user)):
     """

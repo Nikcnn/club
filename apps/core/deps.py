@@ -46,24 +46,17 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-
     try:
-        # ДЕКОДИРОВАНИЕ И ПРОВЕРКА ПОДПИСИ
-        # Если токен просрочен или подделан, jwt.decode выбросит ошибку
-        payload = jwt.decode(
-            token,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM]
-        )
-
-        # Извлекаем ID пользователя из токена (мы его туда положили при логине в поле "sub")
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id: str = payload.get("sub")
+        token_type: str = payload.get("type")  # Получаем тип
 
-        if user_id is None:
+        if user_id is None or token_type != "access":  # <--- ПРОВЕРКА ТИПА
             raise credentials_exception
 
     except JWTError:
         raise credentials_exception
+
 
     # ПОИСК В БАЗЕ ДАННЫХ
     # Если токен валиден, проверяем, существует ли такой юзер реально

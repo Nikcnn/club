@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     # SECURITY
     SECRET_KEY: str = "CHANGE_THIS_TO_A_SUPER_SECRET_STRING_XYZ_123"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 дней
-
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # Делаем коротким (30 мин)
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # Делаем длинным (30 дней)
     # S3 / MinIO (Хранилище файлов)
     S3_ENDPOINT_URL: str | None = None
     S3_ACCESS_KEY: str | None = None
