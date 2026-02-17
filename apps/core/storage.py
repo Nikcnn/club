@@ -1,15 +1,34 @@
 import uuid
 from io import BytesIO
+from urllib.parse import urlparse
 
 from fastapi import HTTPException, UploadFile
 
 from apps.core.settings import settings
 
 
-def _build_public_object_url(bucket: str, object_name: str) -> str:
-    endpoint = (settings.S3_ENDPOINT_URL or "").rstrip("/")
+def _parse_minio_endpoint(endpoint_url: str | None) -> tuple[str, bool]:
+    endpoint = (endpoint_url or "").strip()
     if not endpoint:
         raise HTTPException(status_code=500, detail="S3_ENDPOINT_URL is not configured")
+
+    if endpoint.startswith("http://") or endpoint.startswith("https://"):
+        parsed = urlparse(endpoint)
+        if not parsed.netloc:
+            raise HTTPException(status_code=500, detail="S3_ENDPOINT_URL is invalid")
+        return parsed.netloc, parsed.scheme == "https"
+
+    return endpoint.rstrip("/"), False
+
+
+def _build_public_object_url(bucket: str, object_name: str) -> str:
+    endpoint = (settings.S3_PUBLIC_ENDPOINT_URL or settings.S3_ENDPOINT_URL or "").rstrip("/")
+    if not endpoint:
+        raise HTTPException(status_code=500, detail="S3 public endpoint is not configured")
+
+    if not endpoint.startswith(("http://", "https://")):
+        endpoint = f"http://{endpoint}"
+
     return f"{endpoint}/{bucket}/{object_name}"
 
 
@@ -29,17 +48,16 @@ async def upload_image_to_minio(file: UploadFile, folder: str) -> str:
     if not raw:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-    ext = (file.filename.rsplit(".", 1)[-1].lower() if file.filename and "." in file.filename else "bin")
+    ext = file.filename.rsplit(".", 1)[-1].lower() if file.filename and "." in file.filename else "bin"
     object_name = f"{folder}/{uuid.uuid4().hex}.{ext}"
 
-    endpoint = settings.S3_ENDPOINT_URL or ""
-    endpoint = endpoint.replace("http://", "").replace("https://", "")
+    minio_endpoint, secure = _parse_minio_endpoint(settings.S3_ENDPOINT_URL)
 
     client = Minio(
-        endpoint,
+        minio_endpoint,
         access_key=settings.S3_ACCESS_KEY,
         secret_key=settings.S3_SECRET_KEY,
-        secure=(settings.S3_ENDPOINT_URL or "").startswith("https://"),
+        secure=secure,
     )
 
     bucket = settings.S3_BUCKET_PUBLIC
