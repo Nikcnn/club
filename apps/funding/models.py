@@ -27,6 +27,20 @@ class InvestmentStatus(str, enum.Enum):
     CANCELED = "canceled"
 
 
+
+
+class PaymentProvider(str, enum.Enum):
+    PAYBOX = "paybox"
+    STRIPE = "stripe"
+
+
+class PaymentStatus(str, enum.Enum):
+    INIT = "init"
+    PENDING = "pending"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
 class FundingType(str, enum.Enum):  # <--- ДОБАВИЛ, ИНАЧЕ УПАДЕТ
     DONATION = "donation"
     INVESTMENT = "investment"
@@ -100,7 +114,36 @@ class Investment(Base, TimestampMixin):
     campaign: Mapped["Campaign"] = relationship("Campaign", back_populates="investments")
     # Тут аккуратно: в модели Investor должно быть back_populates="investments"
     investor: Mapped["User"] = relationship("Investor", back_populates="investments")
+    payment: Mapped[Optional["Payment"]] = relationship("Payment", back_populates="investment", uselist=False)
 
     __table_args__ = (
         CheckConstraint("amount > 0", name="check_investment_amount_positive"),
+    )
+
+
+class Payment(Base, TimestampMixin):
+    __tablename__ = "payments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    investment_id: Mapped[int] = mapped_column(ForeignKey("investments.id", ondelete="CASCADE"), unique=True)
+
+    provider: Mapped[PaymentProvider] = mapped_column(
+        Enum(PaymentProvider, name="payment_provider"),
+        default=PaymentProvider.PAYBOX,
+        index=True,
+    )
+    provider_payment_id: Mapped[str] = mapped_column(String(100))
+    checkout_url: Mapped[str | None] = mapped_column(String(500))
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    status: Mapped[PaymentStatus] = mapped_column(
+        Enum(PaymentStatus, name="payment_status"),
+        default=PaymentStatus.INIT,
+    )
+
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    investment: Mapped["Investment"] = relationship("Investment", back_populates="payment")
+
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_payment_id", name="uq_payment_provider_pid"),
     )

@@ -1,4 +1,4 @@
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.core.settings import settings
-from apps.core.security import ALGORITHM  # или settings.ALGORITHM
 from apps.db.session import AsyncSessionLocal
 from apps.users.models import User
 
@@ -57,11 +56,9 @@ async def get_current_user(
 
         # P.S. Тут можно также проверять role из токена, если она там есть
 
-    except JWTError:
+    except (JWTError, ValueError, TypeError):
         raise credentials_exception
 
-    # Ищем пользователя в БД
-    # Используем select(User), чтобы найти и Admin, и Club, и Investor (полиморфизм)
     query = select(User).where(User.id == int(user_id))
     result = await db.execute(query)
     user = result.scalars().first()
