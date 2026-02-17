@@ -1,9 +1,10 @@
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.core.security import get_password_hash, verify_password
+from apps.news.models import News
 from apps.users.models import User, UserRole
 from apps.users.schemas import UserCreateBase
 
@@ -46,3 +47,17 @@ class UserService:
             return None
 
         return user
+
+    @staticmethod
+    async def get_current_news(db: AsyncSession, user_id: int):
+        """
+        Возвращает ленту новостей.
+        Аргумент user_id можно использовать для персонализации в будущем.
+        """
+        # Выбираем новости, сортируем от новых к старым
+        query = select(News).order_by(desc(News.created_at))
+
+        result = await db.execute(query)
+
+        # .scalars().all() возвращает СПИСОК объектов, что и нужно для List[NewsResponse]
+        return result.scalars().all()

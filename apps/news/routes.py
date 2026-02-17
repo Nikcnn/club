@@ -1,13 +1,13 @@
 from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.db.dependencies import get_db
-from apps.users.dependencies import get_current_user
-from apps.users.models import User, UserRole
-
 from apps.news.schemas import NewsCreate, NewsResponse, NewsUpdate
 from apps.news.services import NewsService
+from apps.users.dependencies import get_current_user
+from apps.users.models import User, UserRole
 
 router = APIRouter(prefix="/news", tags=["News"])
 
