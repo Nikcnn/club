@@ -5,7 +5,8 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.funding.models import Payment, PaymentStatus, PaymentProvider, Investment, InvestmentStatus
+from apps.funding.models import Investment, InvestmentStatus
+from apps.payments.models import Payment, PaymentProvider, PaymentStatus
 from apps.payments.schemas import PaymentInitiate
 
 

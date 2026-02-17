@@ -36,6 +36,8 @@ class Competition(Base, TimestampMixin):
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
+    photo_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
     status: Mapped[CompetitionStatus] = mapped_column(
         Enum(CompetitionStatus, name="competition_status"),
         default=CompetitionStatus.DRAFT,

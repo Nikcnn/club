@@ -9,7 +9,8 @@ from apps.organizations.models import Organization
 
 # 2. Funding (Campaigns, Investments, Payments)
 # Мы объединили всё это в папке apps/funding
-from apps.funding.models import Campaign, Investment, Payment
+from apps.funding.models import Campaign, Investment
+from apps.payments.models import Payment
 
 # 3. Features
 from apps.competitions.models import Competition
