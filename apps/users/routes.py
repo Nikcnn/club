@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Body
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,7 +63,7 @@ async def login_for_access_token(
 # === REFRESH ===
 @router.post("/refresh", response_model=Token)  # Обратите внимание: response_model=Token (а не TokenRefreshRequest)
 async def refresh_token(
-    request_data: TokenRefreshRequest,  # <--- Вот так принимаем JSON в теле
+    request_data: TokenRefreshRequest = Body(...),  # <--- Вот так принимаем JSON в теле
     db: AsyncSession = Depends(get_db)
 ):
     # Достаем токен из модели
