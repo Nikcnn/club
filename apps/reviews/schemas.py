@@ -1,3 +1,4 @@
+from datetime import datetime  # <--- Обязательный импорт
 from pydantic import BaseModel, Field
 
 
@@ -9,7 +10,7 @@ class ReviewCreate(BaseModel):
 class ReviewResponse(ReviewCreate):
     id: int
     user_id: int
-    created_at: str  # или datetime
+    created_at: datetime  # или datetime
 
     class Config:
         from_attributes = True

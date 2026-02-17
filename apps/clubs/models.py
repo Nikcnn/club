@@ -1,33 +1,76 @@
-from typing import TYPE_CHECKING
-from sqlalchemy import String, ForeignKey, Text
+from typing import Optional, List, TYPE_CHECKING
+from sqlalchemy import String, ForeignKey, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from apps.db.base import Base, TimestampMixin
+
 from apps.users.models import User, UserRole
 
 if TYPE_CHECKING:
-    from apps.organizations.models import Organization
-    from apps.campaigns.models import Campaign
-    from apps.reviews.models import ClubReview
+    from apps.competitions.models import Competition
+    from apps.funding.models import Campaign
+    from apps.news.models import News
     from apps.ratings.models import ClubRating
+    from apps.reviews.models import ClubReview
 
 
 class Club(User):
     __tablename__ = "clubs"
 
+    # Внешний ключ на родительскую таблицу users
     id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
-    organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"))
 
+    # Специфичные поля клуба
     name: Mapped[str] = mapped_column(String(200))
-    category: Mapped[str] = mapped_column(String(100), index=True)
+    category: Mapped[str] = mapped_column(String(100), index=True)  # IT, Sport, Art
     city: Mapped[str] = mapped_column(String(100), index=True)
-    description: Mapped[str] = mapped_column(Text)
-    logo_key: Mapped[str | None] = mapped_column(String(512))
+    description: Mapped[Optional[str]] = mapped_column(Text)
 
-    organization: Mapped["Organization"] = relationship(back_populates="clubs")
-    campaigns: Mapped[list["Campaign"]] = relationship(back_populates="club")
+    # Медиа и контакты
+    logo_key: Mapped[Optional[str]] = mapped_column(String(512))  # Ссылка на S3
+    website: Mapped[Optional[str]] = mapped_column(String(255))
+    social_links: Mapped[dict | None] = mapped_column(JSON, default=dict)
 
-    reviews: Mapped[list["ClubReview"]] = relationship(back_populates="club")
-    rating: Mapped["ClubRating"] = relationship(back_populates="club", uselist=False)
+    # Связи (Relationships)
+    # lazy="selectin" используется для эффективной асинхронной подгрузки
+    campaigns: Mapped[List["Campaign"]] = relationship(
+        "Campaign",
+        back_populates="club",
+        lazy="selectin",
+        cascade="all, delete-orphan"
+    )
+
+
+
+    news: Mapped[List["News"]] = relationship(
+        "News",
+        back_populates="club",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+
+    competitions: Mapped[List["Competition"]] = relationship(
+        "Competition",
+        back_populates="club",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+
+    reviews: Mapped[list["ClubReview"]] = relationship(
+        "ClubReview",
+        back_populates="club",
+        foreign_keys="ClubReview.club_id",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+
+    rating: Mapped["ClubRating"] = relationship(
+        "ClubRating",
+        back_populates="club",
+        uselist=False,
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+
+    # Настройка полиморфизма SQLAlchemy
     __mapper_args__ = {
-        "polymorphic_identity": UserRole.CLUB,  # <--- Ссылка на Enum
+        "polymorphic_identity": UserRole.CLUB,
     }
