@@ -21,27 +21,40 @@ class ClubReview(ReviewBase):
     __tablename__ = "club_reviews"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    club_id: Mapped[int] = mapped_column(ForeignKey("clubs.id", ondelete="CASCADE"))
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    club_id: Mapped[int] = mapped_column(ForeignKey("clubs.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
-    club: Mapped["Club"] = relationship(back_populates="reviews")
-    author: Mapped["User"] = relationship(back_populates="club_reviews")
-
-    __table_args__ = (
-        UniqueConstraint("club_id", "user_id", name="uq_club_review_user"),
-        CheckConstraint("score >= 1 AND score <= 5", name="check_club_review_score"),
+    club: Mapped["Club"] = relationship(
+        "Club",
+        back_populates="reviews",
+        foreign_keys=[club_id],
     )
 
+    author: Mapped["User"] = relationship(
+        "User",
+        back_populates="club_reviews",
+        foreign_keys=[user_id],
+    )
 
 class OrganizationReview(ReviewBase):
     __tablename__ = "organization_reviews"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"))
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
-    organization: Mapped["Organization"] = relationship(back_populates="reviews")
-    author: Mapped["User"] = relationship(back_populates="org_reviews")
+    organization: Mapped["Organization"] = relationship(
+        "Organization",
+        back_populates="reviews",
+        foreign_keys=[organization_id],
+    )
+
+    author: Mapped["User"] = relationship(
+        "User",
+        back_populates="org_reviews",
+        foreign_keys=[user_id],
+    )
 
     __table_args__ = (
         UniqueConstraint("organization_id", "user_id", name="uq_org_review_user"),

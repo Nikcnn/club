@@ -7,7 +7,7 @@ from apps.db.dependencies import get_db
 from apps.users.dependencies import get_current_user
 from apps.users.models import User
 from apps.users.schemas import UserCreateBase, UserResponseBase, Token
-from apps.users.service import UserService
+from apps.users.services import UserService
 from apps.core.settings import settings
 from apps.core.security import create_access_token  # Функция генерации JWT
 

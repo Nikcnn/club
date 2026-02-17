@@ -27,7 +27,7 @@ class Club(User):
     # Медиа и контакты
     logo_key: Mapped[Optional[str]] = mapped_column(String(512))  # Ссылка на S3
     website: Mapped[Optional[str]] = mapped_column(String(255))
-    social_links: Mapped[Optional[dict]] = mapped_column(JSON, default={})  # {"instagram": "...", "telegram": "..."}
+    social_links: Mapped[dict | None] = mapped_column(JSON, default=dict)
 
     # Связи (Relationships)
     # lazy="selectin" используется для эффективной асинхронной подгрузки
@@ -54,9 +54,10 @@ class Club(User):
         cascade="all, delete-orphan",
     )
 
-    reviews: Mapped[List["ClubReview"]] = relationship(
+    reviews: Mapped[list["ClubReview"]] = relationship(
         "ClubReview",
         back_populates="club",
+        foreign_keys="ClubReview.club_id",
         lazy="selectin",
         cascade="all, delete-orphan",
     )

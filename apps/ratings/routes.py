@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.db.dependencies import get_db
 from apps.ratings.schemas import RatingResponse
-from apps.ratings.services import RatingService
+from apps.ratings.service import RatingService
 
 router = APIRouter(prefix="/ratings", tags=["Ratings"])
 

@@ -26,11 +26,20 @@ class Organization(User):
     website: Mapped[Optional[str]] = mapped_column(String(255))
 
     # Связи
-    reviews: Mapped[List["OrganizationReview"]] = relationship(
+
+
+    reviews: Mapped[list["OrganizationReview"]] = relationship(
         "OrganizationReview",
-        # back_populates="organization", # Если настроено в Review
+        back_populates="organization",
+        foreign_keys="OrganizationReview.organization_id",
         lazy="selectin",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+    )
+
+    org_reviews = relationship(
+        "OrganizationReview",
+        back_populates="author",
+        foreign_keys="OrganizationReview.author_id",
     )
 
     # Рейтинг (One-to-One)
@@ -39,6 +48,13 @@ class Organization(User):
         uselist=False,
         lazy="selectin",
         cascade="all, delete-orphan"
+    )
+    reviews: Mapped[list["OrganizationReview"]] = relationship(
+        "OrganizationReview",
+        back_populates="organization",
+        foreign_keys="OrganizationReview.organization_id",
+        lazy="selectin",
+        cascade="all, delete-orphan",
     )
 
     __mapper_args__ = {

@@ -1,20 +1,20 @@
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, or_
-from passlib.context import CryptContext
-
+from pwdlib import PasswordHash
 from apps.clubs.models import Club
 from apps.clubs.schemas import ClubCreate, ClubUpdate
 from apps.users.models import UserRole
 
 # Настройка хеширования (обычно выносится в core.security)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+password_hash = PasswordHash.recommended()
+
 
 
 class ClubService:
     @staticmethod
     def get_password_hash(password: str) -> str:
-        return pwd_context.hash(password)
+        return password_hash.hash(password)
 
     @staticmethod
     async def create(db: AsyncSession, schema: ClubCreate) -> Club:
