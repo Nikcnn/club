@@ -121,3 +121,35 @@ class CampaignService:
         query = select(Campaign).where(Campaign.id == campaign_id)
         result = await db.execute(query)
         return result.scalar_one_or_none()
+
+
+class InvestmentService:
+    @staticmethod
+    async def create(db: AsyncSession, schema: InvestmentCreate, user_id: int) -> Investment:
+        investment = Investment(
+            campaign_id=schema.campaign_id,
+            amount=schema.amount,
+            type=schema.type,
+            investor_id=user_id,
+            status=InvestmentStatus.PENDING,
+        )
+        db.add(investment)
+        await db.commit()
+        await db.refresh(investment)
+        return investment
+
+    @staticmethod
+    async def get_by_user(db: AsyncSession, user_id: int) -> List[Investment]:
+        query = (
+            select(Investment)
+            .where(Investment.investor_id == user_id)
+            .order_by(desc(Investment.created_at))
+        )
+        result = await db.execute(query)
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def get_by_id(db: AsyncSession, investment_id: int) -> Optional[Investment]:
+        query = select(Investment).where(Investment.id == investment_id)
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
