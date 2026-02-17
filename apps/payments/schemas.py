@@ -1,25 +1,27 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Any, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from apps.payments.models import PaymentProvider, PaymentStatus
 
-# === INITIATE ===
+
 class PaymentInitiate(BaseModel):
     investment_id: int = Field(..., description="ID инвестиции, которую нужно оплатить")
     provider: PaymentProvider = Field(default=PaymentProvider.PAYBOX)
+    idempotency_key: Optional[str] = Field(default=None, max_length=128)
 
-# === WEBHOOK (Simulated) ===
+
 class PaymentWebhookData(BaseModel):
-    """
-    Схема данных, которые присылает платежка (упрощенно)
-    """
     provider_payment_id: str
-    status: str  # 'success' / 'error'
-    signature: Optional[str] = None # Для проверки подлинности
+    provider_event_id: Optional[str] = None
+    event_type: str = "payment_status"
+    status: str
+    signature: Optional[str] = None
+    payload: dict[str, Any] = Field(default_factory=dict)
 
-# === RESPONSE ===
+
 class PaymentResponse(BaseModel):
     id: int
     investment_id: int
@@ -27,6 +29,7 @@ class PaymentResponse(BaseModel):
     status: PaymentStatus
     provider: PaymentProvider
     checkout_url: Optional[str] = None
+    idempotency_key: Optional[str] = None
     created_at: datetime
     confirmed_at: Optional[datetime] = None
 
