@@ -35,11 +35,16 @@ class User(Base, TimestampMixin):
         back_populates="author",
         cascade="all, delete-orphan",
     )
+    # В модели User
     org_reviews: Mapped[List["OrganizationReview"]] = relationship(
         "OrganizationReview",
         back_populates="author",
         cascade="all, delete-orphan",
+        # Укажите здесь точное название поля внешнего ключа в модели OrganizationReview
+        # Обычно это 'author_id' или 'user_id'
+        foreign_keys="[OrganizationReview.user_id]"
     )
+
 
     __mapper_args__ = {
         "polymorphic_identity": UserRole.MEMBER,  # По дефолту, если создаем просто User

@@ -1,14 +1,13 @@
 from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.db.dependencies import get_db
-from apps.users.dependencies import get_current_user
-from apps.users.models import User, UserRole
 from apps.investors.schemas import InvestorCreate, InvestorUpdate, InvestorResponse
 from apps.investors.services import InvestorService
-from apps.investors.models import Investor
-
+from apps.users.dependencies import get_current_user
+from apps.users.models import User, UserRole
 # Чтобы проверить уникальность email
 from apps.users.services import UserService
 

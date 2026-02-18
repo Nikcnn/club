@@ -1,4 +1,4 @@
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -11,11 +11,8 @@ from apps.db.session import AsyncSessionLocal
 from apps.users.models import User
 
 
-# === 1. Dependency для БД ===
+# 1. Dependency для получения сессии БД
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """
-    Создает сессию базы данных для каждого запроса.
-    """
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -26,39 +23,43 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
-# === 2. Dependency для Авторизации ===
-
-# Указываем URL, по которому фронтенд может получить токен (для Swagger UI)
+# 2. Настройка схемы авторизации
+# tokenUrl указывает Swagger UI, куда отправлять логин/пароль, чтобы получить токен
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/login")
 
 
+# 3. ГЛАВНАЯ ФУНКЦИЯ ПРОВЕРКИ
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db)
 ) -> User:
     """
-    Валидация токена и получение текущего пользователя из БД.
-    Используется во всех защищенных ручках: current_user: User = Depends(get_current_user)
+    Эта функция вызывается FastAPI каждый раз, когда ендпоинт требует авторизацию.
+    Она:
+    1. Достает токен из заголовка Authorization: Bearer <token>
+    2. Расшифровывает его (jwt.decode)
+    3. Проверяет срок действия и подпись
+    4. Ищет владельца в базе данных
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-
     try:
-        # Декодируем токен
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id: str = payload.get("sub")
+        token_type: str = payload.get("type")  # Получаем тип
 
-        if user_id is None:
+        if user_id is None or token_type != "access":  # <--- ПРОВЕРКА ТИПА
             raise credentials_exception
 
-        # P.S. Тут можно также проверять role из токена, если она там есть
-
-    except (JWTError, ValueError, TypeError):
+    except JWTError:
         raise credentials_exception
 
+
+    # ПОИСК В БАЗЕ ДАННЫХ
+    # Если токен валиден, проверяем, существует ли такой юзер реально
     query = select(User).where(User.id == int(user_id))
     result = await db.execute(query)
     user = result.scalars().first()

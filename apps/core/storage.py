@@ -33,6 +33,11 @@ def _build_public_object_url(bucket: str, object_name: str) -> str:
 
 
 async def upload_image_to_minio(file: UploadFile, folder: str) -> str:
+    """
+    Загружает изображение в MinIO в публичный бакет и возвращает КЛЮЧ объекта (object_key), а не URL.
+    Пример возвращаемого значения: "users/42/0f1a2b3c4d.png".
+    Чтобы получить публичный URL, используйте build_public_url(object_key).
+    """
     if not settings.S3_ACCESS_KEY or not settings.S3_SECRET_KEY:
         raise HTTPException(status_code=500, detail="MinIO credentials are not configured")
 
@@ -72,4 +77,5 @@ async def upload_image_to_minio(file: UploadFile, folder: str) -> str:
         content_type=file.content_type,
     )
 
-    return _build_public_object_url(bucket, object_name)
+    # Возвращаем ключ (для хранения в *_key колонках)
+    return object_name

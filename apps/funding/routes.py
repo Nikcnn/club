@@ -18,6 +18,8 @@ from apps.funding.services import CampaignService, InvestmentService
 
 router = APIRouter(prefix="/funding", tags=["Funding"])
 
+# TODO(search): при добавлении delete-эндпоинта кампании вызывать SearchService.delete_point("campaign", campaign_id) после commit.
+
 # ==========================================
 # 1. CAMPAIGNS
 # ==========================================
