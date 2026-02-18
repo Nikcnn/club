@@ -1,8 +1,8 @@
-"""Initial migration
+"""descriptive message
 
-Revision ID: 6376c9945e4f
+Revision ID: fe4b333d6115
 Revises: 
-Create Date: 2026-02-16 11:27:58.284922+00:00
+Create Date: 2026-02-18 11:23:51.017961+00:00
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '6376c9945e4f'
+revision: str = 'fe4b333d6115'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -34,6 +34,41 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
     op.create_index(op.f('ix_users_role'), 'users', ['role'], unique=False)
+    op.create_table('webhook_events',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('provider', sa.String(length=64), nullable=False),
+    sa.Column('provider_event_id', sa.String(length=255), nullable=True),
+    sa.Column('event_type', sa.String(length=128), nullable=False),
+    sa.Column('signature_valid', sa.Boolean(), nullable=False),
+    sa.Column('payload', sa.JSON(), nullable=False),
+    sa.Column('payload_hash', sa.String(length=64), nullable=False),
+    sa.Column('received_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('processed_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('status', sa.Enum('RECEIVED', 'PROCESSED', 'IGNORED', 'FAILED', name='webhook_event_status'), nullable=False),
+    sa.Column('error_message', sa.Text(), nullable=True),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('provider', 'payload_hash', name='uq_webhook_provider_hash'),
+    sa.UniqueConstraint('provider', 'provider_event_id', name='uq_webhook_provider_event')
+    )
+    op.create_index('idx_webhook_status_received', 'webhook_events', ['status', 'received_at'], unique=False)
+    op.create_index(op.f('ix_webhook_events_provider'), 'webhook_events', ['provider'], unique=False)
+    op.create_index(op.f('ix_webhook_events_status'), 'webhook_events', ['status'], unique=False)
+    op.create_table('click_events',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('doc_id', sa.String(length=255), nullable=False),
+    sa.Column('doc_type', sa.String(length=32), nullable=False),
+    sa.Column('entity_id', sa.String(length=128), nullable=False),
+    sa.Column('position', sa.Integer(), nullable=True),
+    sa.Column('query_text', sa.String(length=512), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_click_events_created_at'), 'click_events', ['created_at'], unique=False)
+    op.create_index(op.f('ix_click_events_doc_id'), 'click_events', ['doc_id'], unique=False)
+    op.create_index(op.f('ix_click_events_doc_type'), 'click_events', ['doc_type'], unique=False)
+    op.create_index(op.f('ix_click_events_user_id'), 'click_events', ['user_id'], unique=False)
     op.create_table('clubs',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=200), nullable=False),
@@ -68,6 +103,43 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_organizations_city'), 'organizations', ['city'], unique=False)
     op.create_index(op.f('ix_organizations_name'), 'organizations', ['name'], unique=False)
+    op.create_table('search_events',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=True),
+    sa.Column('query_text', sa.String(length=512), nullable=False),
+    sa.Column('role', sa.String(length=64), nullable=True),
+    sa.Column('filters_json', sa.JSON(), nullable=True),
+    sa.Column('top_doc_ids', sa.JSON(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_search_events_created_at'), 'search_events', ['created_at'], unique=False)
+    op.create_index(op.f('ix_search_events_user_id'), 'search_events', ['user_id'], unique=False)
+    op.create_table('user_search_profiles',
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('top_cities', sa.JSON(), nullable=False),
+    sa.Column('top_categories', sa.JSON(), nullable=False),
+    sa.Column('top_types', sa.JSON(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('user_id')
+    )
+    op.create_table('webhook_delivery_logs',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('webhook_event_id', sa.Integer(), nullable=False),
+    sa.Column('attempt_no', sa.Integer(), nullable=False),
+    sa.Column('http_headers', sa.JSON(), nullable=False),
+    sa.Column('remote_addr', sa.String(length=64), nullable=True),
+    sa.Column('processed', sa.Boolean(), nullable=False),
+    sa.Column('http_status', sa.Integer(), nullable=True),
+    sa.Column('error', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['webhook_event_id'], ['webhook_events.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('webhook_event_id', 'attempt_no', name='uq_delivery_attempt')
+    )
+    op.create_index(op.f('ix_webhook_delivery_logs_webhook_event_id'), 'webhook_delivery_logs', ['webhook_event_id'], unique=False)
     op.create_table('campaigns',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('club_id', sa.Integer(), nullable=False),
@@ -108,11 +180,9 @@ def upgrade() -> None:
     sa.Column('is_approved', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.CheckConstraint('score >= 1 AND score <= 5', name='check_club_review_score'),
     sa.ForeignKeyConstraint(['club_id'], ['clubs.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('club_id', 'user_id', name='uq_club_review_user')
+    sa.PrimaryKeyConstraint('id')
     )
     op.create_table('competitions',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -121,6 +191,7 @@ def upgrade() -> None:
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('starts_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('ends_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('photo_key', sa.String(length=512), nullable=True),
     sa.Column('status', sa.Enum('DRAFT', 'ACTIVE', 'FINISHED', 'CANCELED', name='competition_status'), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -193,10 +264,13 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('investment_id', sa.Integer(), nullable=False),
     sa.Column('provider', sa.Enum('PAYBOX', 'STRIPE', name='payment_provider'), nullable=False),
-    sa.Column('provider_payment_id', sa.String(length=100), nullable=False),
+    sa.Column('provider_payment_id', sa.String(length=255), nullable=True),
     sa.Column('checkout_url', sa.String(length=500), nullable=True),
     sa.Column('amount', sa.Numeric(precision=14, scale=2), nullable=False),
-    sa.Column('status', sa.Enum('INIT', 'PENDING', 'SUCCESS', 'FAILED', name='payment_status'), nullable=False),
+    sa.Column('status', sa.Enum('CREATED', 'PENDING', 'SUCCESS', 'FAILED', 'CANCELED', 'REFUNDED', name='payment_status'), nullable=False),
+    sa.Column('idempotency_key', sa.String(length=128), nullable=True),
+    sa.Column('last_event_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('version', sa.Integer(), nullable=False),
     sa.Column('confirmed_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -204,18 +278,55 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('provider', 'provider_payment_id', name='uq_payment_provider_pid')
     )
+    op.create_index('idx_payment_status_created', 'payments', ['status', 'created_at'], unique=False)
     op.create_index(op.f('ix_payments_investment_id'), 'payments', ['investment_id'], unique=True)
     op.create_index(op.f('ix_payments_provider'), 'payments', ['provider'], unique=False)
     op.create_index(op.f('ix_payments_status'), 'payments', ['status'], unique=False)
+    op.create_table('payment_idempotency',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('scope', sa.String(length=64), nullable=False),
+    sa.Column('idempotency_key', sa.String(length=128), nullable=False),
+    sa.Column('request_hash', sa.String(length=64), nullable=False),
+    sa.Column('payment_id', sa.Integer(), nullable=False),
+    sa.Column('response_code', sa.Integer(), nullable=False),
+    sa.Column('response_body', sa.JSON(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['payment_id'], ['payments.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('user_id', 'scope', 'idempotency_key', name='uq_payment_idempotency_user_scope_key')
+    )
+    op.create_index(op.f('ix_payment_idempotency_user_id'), 'payment_idempotency', ['user_id'], unique=False)
+    op.create_table('payment_state_transition_logs',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('payment_id', sa.Integer(), nullable=False),
+    sa.Column('from_status', sa.Enum('CREATED', 'PENDING', 'SUCCESS', 'FAILED', 'CANCELED', 'REFUNDED', name='payment_status'), nullable=False),
+    sa.Column('to_status', sa.Enum('CREATED', 'PENDING', 'SUCCESS', 'FAILED', 'CANCELED', 'REFUNDED', name='payment_status'), nullable=False),
+    sa.Column('reason', sa.String(length=255), nullable=False),
+    sa.Column('actor_type', sa.Enum('SYSTEM', 'USER', 'WEBHOOK', name='payment_actor_type'), nullable=False),
+    sa.Column('actor_id', sa.Integer(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['payment_id'], ['payments.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('idx_payment_transition_payment_created', 'payment_state_transition_logs', ['payment_id', 'created_at'], unique=False)
+    op.create_index(op.f('ix_payment_state_transition_logs_payment_id'), 'payment_state_transition_logs', ['payment_id'], unique=False)
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_payment_state_transition_logs_payment_id'), table_name='payment_state_transition_logs')
+    op.drop_index('idx_payment_transition_payment_created', table_name='payment_state_transition_logs')
+    op.drop_table('payment_state_transition_logs')
+    op.drop_index(op.f('ix_payment_idempotency_user_id'), table_name='payment_idempotency')
+    op.drop_table('payment_idempotency')
     op.drop_index(op.f('ix_payments_status'), table_name='payments')
     op.drop_index(op.f('ix_payments_provider'), table_name='payments')
     op.drop_index(op.f('ix_payments_investment_id'), table_name='payments')
+    op.drop_index('idx_payment_status_created', table_name='payments')
     op.drop_table('payments')
     op.drop_index(op.f('ix_investments_status'), table_name='investments')
     op.drop_index(op.f('ix_investments_investor_id'), table_name='investments')
@@ -235,6 +346,12 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_campaigns_status'), table_name='campaigns')
     op.drop_index(op.f('ix_campaigns_club_id'), table_name='campaigns')
     op.drop_table('campaigns')
+    op.drop_index(op.f('ix_webhook_delivery_logs_webhook_event_id'), table_name='webhook_delivery_logs')
+    op.drop_table('webhook_delivery_logs')
+    op.drop_table('user_search_profiles')
+    op.drop_index(op.f('ix_search_events_user_id'), table_name='search_events')
+    op.drop_index(op.f('ix_search_events_created_at'), table_name='search_events')
+    op.drop_table('search_events')
     op.drop_index(op.f('ix_organizations_name'), table_name='organizations')
     op.drop_index(op.f('ix_organizations_city'), table_name='organizations')
     op.drop_table('organizations')
@@ -242,6 +359,15 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_clubs_city'), table_name='clubs')
     op.drop_index(op.f('ix_clubs_category'), table_name='clubs')
     op.drop_table('clubs')
+    op.drop_index(op.f('ix_click_events_user_id'), table_name='click_events')
+    op.drop_index(op.f('ix_click_events_doc_type'), table_name='click_events')
+    op.drop_index(op.f('ix_click_events_doc_id'), table_name='click_events')
+    op.drop_index(op.f('ix_click_events_created_at'), table_name='click_events')
+    op.drop_table('click_events')
+    op.drop_index(op.f('ix_webhook_events_status'), table_name='webhook_events')
+    op.drop_index(op.f('ix_webhook_events_provider'), table_name='webhook_events')
+    op.drop_index('idx_webhook_status_received', table_name='webhook_events')
+    op.drop_table('webhook_events')
     op.drop_index(op.f('ix_users_role'), table_name='users')
     op.drop_index(op.f('ix_users_email'), table_name='users')
     op.drop_table('users')

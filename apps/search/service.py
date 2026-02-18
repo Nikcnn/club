@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+import uuid as uuid_module
 
 from fastapi import HTTPException
 from qdrant_client.http.models import (
@@ -21,7 +22,7 @@ from apps.news.models import News
 from apps.search.config import get_search_settings
 from apps.search.embeddings import encode_texts
 from apps.search.personalization import BonusWeights, build_profile_vector, rerank_results
-from apps.search.qdrant_client import ensure_collection, get_qdrant_client
+from apps.search.qdrant_client import ensure_collection, get_qdrant_client, search_points
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 class SearchService:
     @staticmethod
     def build_doc_id(doc_type: str, entity_id: Any) -> str:
-        return f"{doc_type}:{entity_id}"
+        return str(uuid_module.uuid5(uuid_module.NAMESPACE_DNS, f"{doc_type}:{entity_id}"))
 
     @staticmethod
     def build_text(payload: dict[str, Any]) -> str:
@@ -188,7 +189,9 @@ class SearchService:
         if status:
             must.append(FieldCondition(key="status", match=MatchValue(value=status)))
         if exclude_doc_ids:
-            must_not.append(HasIdCondition(has_id=exclude_doc_ids))
+            # Convert string UUIDs to UUID objects for Qdrant
+            uuid_list = [uuid_module.UUID(doc_id) if isinstance(doc_id, str) else doc_id for doc_id in exclude_doc_ids]
+            must_not.append(HasIdCondition(has_id=uuid_list))
 
         if not must and not must_not:
             return None
@@ -228,12 +231,10 @@ class SearchService:
             raise HTTPException(status_code=503, detail="Search service is temporarily unavailable.")
 
         settings = get_search_settings()
-        client = get_qdrant_client()
-
         vector = (await encode_texts([q]))[0]
         query_filter = SearchService._build_filter(doc_type=doc_type, city=city, category=category, status=status)
 
-        hits = await client.search(
+        hits = await search_points(
             collection_name=settings.QDRANT_COLLECTION,
             query_vector=vector,
             query_filter=query_filter,
@@ -293,9 +294,7 @@ class SearchService:
             raise HTTPException(status_code=503, detail="Search service is temporarily unavailable.")
 
         settings = get_search_settings()
-        client = get_qdrant_client()
-
-        hits = await client.search(
+        hits = await search_points(
             collection_name=settings.QDRANT_COLLECTION,
             query_vector=profile_vector,
             query_filter=SearchService._build_filter(doc_type=doc_type, exclude_doc_ids=exclude_doc_ids),

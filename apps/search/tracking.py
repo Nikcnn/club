@@ -44,7 +44,15 @@ class SearchTrackingService:
         position: int | None,
         query_text: str | None,
     ) -> None:
-        doc_type, _, entity_id = doc_id.partition(":")
+        # doc_id is expected in format "type:entity_id" (e.g., "club:50")
+        # or as a UUID string from Qdrant
+        if ":" in doc_id:
+            doc_type, _, entity_id = doc_id.partition(":")
+        else:
+            # If it's just a UUID, we can't extract type/entity_id
+            doc_type = "unknown"
+            entity_id = doc_id
+
         event = ClickEvent(
             user_id=user.id,
             doc_id=doc_id,

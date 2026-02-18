@@ -1,8 +1,10 @@
+import inspect
 import logging
+from typing import Any
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import exceptions as qdrant_exceptions
-from qdrant_client.http.models import Distance, VectorParams
+from qdrant_client.http.models import Distance, Filter, VectorParams
 
 from apps.search.config import get_search_settings
 
@@ -30,6 +32,43 @@ def get_qdrant_client() -> AsyncQdrantClient:
             timeout=5.0,
         )
     return _qdrant_client
+
+
+async def _call_async(func: Any, **kwargs: Any) -> Any:
+    params = inspect.signature(func).parameters
+    filtered = {key: value for key, value in kwargs.items() if key in params}
+    return await func(**filtered)
+
+
+async def search_points(
+    *,
+    collection_name: str,
+    query_vector: list[float],
+    query_filter: Filter | None,
+    limit: int,
+    score_threshold: float | None,
+    with_payload: bool,
+) -> list[Any]:
+    client = get_qdrant_client()
+    kwargs = {
+        "collection_name": collection_name,
+        "query_vector": query_vector,
+        "query_filter": query_filter,
+        "filter": query_filter,
+        "query": query_vector,
+        "limit": limit,
+        "score_threshold": score_threshold,
+        "with_payload": with_payload,
+    }
+    if hasattr(client, "search"):
+        return await _call_async(client.search, **kwargs)
+    if hasattr(client, "search_points"):
+        response = await _call_async(client.search_points, **kwargs)
+    elif hasattr(client, "query_points"):
+        response = await _call_async(client.query_points, **kwargs)
+    else:
+        raise AttributeError("AsyncQdrantClient has no search-like method.")
+    return response.points if hasattr(response, "points") else response
 
 
 async def ensure_collection() -> bool:

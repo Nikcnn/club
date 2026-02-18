@@ -109,7 +109,13 @@ async def recommend(
     current_user: User = Depends(get_required_current_user),
 ) -> SearchResponse:
     recent_clicks = await SearchTrackingService.get_recent_click_events(db, current_user.id, limit=20)
-    clicked_doc_ids = [item.doc_id for item in recent_clicks]
+
+    # Convert doc_ids from "type:entity_id" format to UUIDs for Qdrant
+    clicked_doc_ids = []
+    for click in recent_clicks:
+        # Always reconstruct UUID from doc_type and entity_id stored in DB
+        uuid_doc_id = SearchService.build_doc_id(click.doc_type, click.entity_id)
+        clicked_doc_ids.append(uuid_doc_id)
 
     if clicked_doc_ids:
         vectors = await SearchService.fetch_vectors_by_doc_ids(clicked_doc_ids)
