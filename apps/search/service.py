@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 import uuid as uuid_module
 
@@ -218,6 +219,36 @@ class SearchService:
         }
 
     @staticmethod
+    def _extract_numeric_tokens(query: str) -> list[str]:
+        return re.findall(r"\d+", query)
+
+    @staticmethod
+    def _contains_all_tokens(text: str, tokens: list[str]) -> bool:
+        lowered_text = text.casefold()
+        return all(token.casefold() in lowered_text for token in tokens)
+
+    @staticmethod
+    def _strict_city_query_filter(items: list[dict[str, Any]], q: str, city: str | None) -> list[dict[str, Any]]:
+        if not city:
+            return items
+
+        numeric_tokens = SearchService._extract_numeric_tokens(q)
+        if not numeric_tokens:
+            return items
+
+        filtered_items: list[dict[str, Any]] = []
+        for item in items:
+            searchable_text = " ".join(
+                [
+                    str(item.get("title") or ""),
+                    str(item.get("snippet") or ""),
+                ]
+            )
+            if SearchService._contains_all_tokens(searchable_text, numeric_tokens):
+                filtered_items.append(item)
+        return filtered_items
+
+    @staticmethod
     async def semantic_search(
         q: str,
         top_k: int,
@@ -242,7 +273,8 @@ class SearchService:
             score_threshold=settings.SEARCH_SCORE_THRESHOLD,
             with_payload=True,
         )
-        return [SearchService._normalize_hit(hit) for hit in hits]
+        normalized_hits = [SearchService._normalize_hit(hit) for hit in hits]
+        return SearchService._strict_city_query_filter(normalized_hits, q=q, city=city)
 
     @staticmethod
     def personalize_results(
