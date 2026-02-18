@@ -4,6 +4,7 @@ from sqlalchemy import select, update, or_
 from pwdlib import PasswordHash
 from apps.clubs.models import Club
 from apps.clubs.schemas import ClubCreate, ClubUpdate
+from apps.search.service import SearchService
 from apps.users.models import UserRole
 
 # Настройка хеширования (обычно выносится в core.security)
@@ -38,6 +39,7 @@ class ClubService:
         db.add(club)
         await db.commit()
         await db.refresh(club)
+        await SearchService.upsert_single(SearchService.club_payload(club))
         return club
 
     @staticmethod
@@ -86,4 +88,5 @@ class ClubService:
 
         await db.commit()
         await db.refresh(club)
+        await SearchService.upsert_single(SearchService.club_payload(club))
         return club
