@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -18,12 +20,21 @@ from apps.news.routes import router as news_router
 from apps.reviews.routes import router as reviews_router
 from apps.ratings.routes import router as ratings_router
 from apps.admin.setup import setup_admin
+from apps.search.qdrant_client import ensure_collection
+from apps.search.routes import router as search_router
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await ensure_collection()
+    yield
+
 
 # Создание приложения
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version="1.0.0",
     description="API для платформы студенческих клубов ClubVerse (Modular Monolith)",
+    lifespan=lifespan,
     # Отключаем документацию, если мы в продакшене (опционально)
     # docs_url=None if settings.ENV == "production" else "/docs",
 )
@@ -76,6 +87,9 @@ app.include_router(news_router)
 app.include_router(reviews_router)
 # /ratings
 app.include_router(ratings_router)
+
+# /search
+app.include_router(search_router)
 
 
 # ==========================================
