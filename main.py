@@ -41,11 +41,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=settings.SECRET_KEY,
-)
-
 # Инициализация админ-панели (/admin)
 setup_admin(app)
 

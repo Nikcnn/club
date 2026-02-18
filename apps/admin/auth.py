@@ -1,30 +1,22 @@
-from sqladmin.authentication import AuthenticationBackend
-from starlette.requests import Request
+import secrets
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from apps.core.settings import settings
 
+security = HTTPBasic()
 
-class AdminAuthBackend(AuthenticationBackend):
-    """Простая форма логина для админ-панели."""
 
-    def __init__(self, secret_key: str):
-        super().__init__(secret_key=secret_key)
-        self._username = settings.ADMIN_USERNAME
-        self._password = settings.ADMIN_PASSWORD
+def admin_basic_auth(credentials: HTTPBasicCredentials = Depends(security)) -> str:
+    is_valid_username = secrets.compare_digest(credentials.username, settings.ADMIN_USERNAME)
+    is_valid_password = secrets.compare_digest(credentials.password, settings.ADMIN_PASSWORD)
 
-    async def login(self, request: Request) -> bool:
-        form = await request.form()
-        username = form.get("username")
-        password = form.get("password")
+    if not (is_valid_username and is_valid_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid admin credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
 
-        if username == self._username and password == self._password:
-            request.session.update({"admin_token": "ok"})
-            return True
-        return False
-
-    async def logout(self, request: Request) -> bool:
-        request.session.clear()
-        return True
-
-    async def authenticate(self, request: Request) -> bool:
-        return request.session.get("admin_token") == "ok"
+    return credentials.username
