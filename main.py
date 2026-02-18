@@ -16,6 +16,7 @@ from apps.competitions.routes import router as competitions_router
 from apps.news.routes import router as news_router
 from apps.reviews.routes import router as reviews_router
 from apps.ratings.routes import router as ratings_router
+from apps.admin.setup import setup_admin
 
 # Создание приложения
 app = FastAPI(
@@ -38,6 +39,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Инициализация админ-панели (/admin)
+setup_admin(app)
 
 # ==========================================
 # 2. ПОДКЛЮЧЕНИЕ РОУТЕРОВ (Routes)
