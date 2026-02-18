@@ -1,6 +1,7 @@
-from typing import List, Optional
 from datetime import datetime
-from sqlalchemy import select, desc
+from typing import Any, cast
+
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.news.models import News
@@ -23,10 +24,10 @@ class NewsService:
     @staticmethod
     async def get_all(
         db: AsyncSession,
-        club_id: Optional[int] = None,
+        club_id: int | None = None,
         skip: int = 0,
         limit: int = 20
-    ) -> List[News]:
+    ) -> list[News]:
         query = select(News)
 
         if club_id:
@@ -36,10 +37,10 @@ class NewsService:
         query = query.order_by(desc(News.created_at)).offset(skip).limit(limit)
 
         result = await db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @staticmethod
-    async def get_by_id(db: AsyncSession, news_id: int) -> Optional[News]:
+    async def get_by_id(db: AsyncSession, news_id: int) -> News | None:
         query = select(News).where(News.id == news_id)
         result = await db.execute(query)
         return result.scalar_one_or_none()
@@ -49,12 +50,12 @@ class NewsService:
         db: AsyncSession,
         news_id: int,
         schema: NewsUpdate
-    ) -> Optional[News]:
+    ) -> News | None:
         news = await NewsService.get_by_id(db, news_id)
         if not news:
             return None
 
-        update_data = schema.model_dump(exclude_unset=True)
+        update_data = cast(dict[str, Any], schema.model_dump(exclude_unset=True))
         for key, value in update_data.items():
             setattr(news, key, value)
 
