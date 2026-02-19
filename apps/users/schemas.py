@@ -8,6 +8,7 @@ from apps.users.models import UserRole
 
 class UserCreateBase(BaseModel):
     email: EmailStr
+    username: str
     password: str
     avatar_key: Optional[str] = None
 
