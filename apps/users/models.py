@@ -4,6 +4,7 @@ from sqlalchemy import Enum, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from apps.db.base import Base, TimestampMixin
 
+
 if TYPE_CHECKING:
     from apps.reviews.models import ClubReview, OrganizationReview
 class UserRole(str, enum.Enum):
@@ -17,6 +18,7 @@ class User(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    username: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
 
     role: Mapped[UserRole] = mapped_column(
@@ -50,3 +52,4 @@ class User(Base, TimestampMixin):
         "polymorphic_identity": UserRole.MEMBER,  # По дефолту, если создаем просто User
         "polymorphic_on": role,  # SQLAlchemy смотрит на эту колонку
     }
+

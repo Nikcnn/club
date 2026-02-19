@@ -16,14 +16,15 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # Делаем длинным (30 дней)
     # S3 / MinIO (Хранилище файлов)
     S3_ENDPOINT_URL: str | None = None
+    S3_PUBLIC_ENDPOINT_URL: str | None = None
     S3_ACCESS_KEY: str | None = None
     S3_SECRET_KEY: str | None = None
     S3_BUCKET_PUBLIC: str = "public"
     S3_BUCKET_PRIVATE: str = "private"
 
-    ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str = "admin"
-
+    ADMIN_USER_MODEL: str = "User"
+    ADMIN_USER_MODEL_USERNAME_FIELD: str = "admin"
+    ADMIN_SECRET_KEY: str = "CHANGE_THIS_TO_A_SUPER_SECRET_STRING_XYZ_123"
     # Project Info
     PROJECT_NAME: str = "ClubVerse API"
     API_V1_STR: str = "" # Если нужен префикс /api/v1

@@ -1,20 +1,19 @@
 from typing import List, Optional
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.db.dependencies import get_db
-from apps.users.dependencies import get_current_user
-from apps.users.models import User, UserRole
-
-from apps.core.storage import upload_image_to_minio
-
+from apps.competitions.models import CompetitionStatus
 from apps.competitions.schemas import (
     CompetitionCreate,
     CompetitionResponse,
     CompetitionUpdate
 )
 from apps.competitions.services import CompetitionService
-from apps.competitions.models import CompetitionStatus
+from apps.core.storage import upload_image_to_minio
+from apps.db.dependencies import get_db
+from apps.users.dependencies import get_current_user
+from apps.users.models import User, UserRole
 
 router = APIRouter(prefix="/competitions", tags=["Competitions"])
 
@@ -25,9 +24,6 @@ async def create_competition(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Создать соревнование (только для Клубов).
-    """
     if current_user.role != UserRole.CLUB:
         raise HTTPException(status_code=403, detail="Только клубы могут создавать соревнования")
 
@@ -42,9 +38,6 @@ async def list_competitions(
     limit: int = 20,
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Публичный список соревнований.
-    """
     return await CompetitionService.get_all(db, skip, limit, status, club_id)
 
 
@@ -66,14 +59,10 @@ async def update_competition(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Обновить соревнование. Только владелец (клуб).
-    """
     comp = await CompetitionService.get_by_id(db, comp_id)
     if not comp:
         raise HTTPException(status_code=404, detail="Соревнование не найдено")
 
-    # Проверка прав: редактировать может только создатель
     if comp.club_id != current_user.id:
         raise HTTPException(status_code=403, detail="Вы не владелец этого соревнования")
 
@@ -86,10 +75,6 @@ async def upload_competition_photo(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Загрузка фото для соревнования (только владелец-клуб).
-    В БД сохраняется ссылка на объект в MinIO.
-    """
     comp = await CompetitionService.get_by_id(db, comp_id)
     if not comp:
         raise HTTPException(status_code=404, detail="Соревнование не найдено")

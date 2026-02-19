@@ -11,6 +11,8 @@ from apps.clubs.models import Club
 
 router = APIRouter(prefix="/clubs", tags=["Clubs"])
 
+# TODO(search): при добавлении delete-эндпоинта клуба вызывать SearchService.delete_point("club", club_id) после commit.
+
 
 # === PUBLIC ENDPOINTS ===
 

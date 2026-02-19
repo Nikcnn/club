@@ -6,6 +6,7 @@ from sqlalchemy import select, desc, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.funding.models import Campaign, Investment, CampaignStatus, InvestmentStatus
+from apps.search.service import SearchService
 from apps.funding.schemas import CampaignCreate, CampaignUpdate, InvestmentCreate
 
 
@@ -20,6 +21,7 @@ class CampaignService:
         db.add(campaign)
         await db.commit()
         await db.refresh(campaign)
+        await SearchService.upsert_single(SearchService.campaign_payload(campaign))
         return campaign
 
     @staticmethod
@@ -110,6 +112,7 @@ class CampaignService:
 
         await db.commit()
         await db.refresh(campaign)
+        await SearchService.upsert_single(SearchService.campaign_payload(campaign))
 
         # Чтобы вернуть красивый ответ с суммой, можно снова вызвать get_by_id
         # или просто вернуть объект (current_amount будет 0 или старым, если не пересчитать)
