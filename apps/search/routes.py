@@ -146,7 +146,6 @@ async def search(
     city: str | None = Query(None),
     category: str | None = Query(None),
     status: str | None = Query(None),
-    personalize: bool | None = Query(None),
     role_boost: bool = Query(True),
     track: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
@@ -156,8 +155,6 @@ async def search(
     is_authenticated = current_user is not None
 
     personalize_effective = bool(search_settings.PERSONALIZATION_ENABLED and is_authenticated)
-    if personalize is not None:
-        personalize_effective = bool(personalize and is_authenticated and search_settings.PERSONALIZATION_ENABLED)
 
     track_effective = bool(is_authenticated)
     if track is not None:
