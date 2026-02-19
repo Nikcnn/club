@@ -23,27 +23,46 @@ def test_build_text_skips_none() -> None:
     assert text == "AI Club Almaty active"
 
 
-def test_city_numeric_query_filter_prefers_exact_number_match() -> None:
+def test_city_query_precision_filter_prefers_exact_phrase_in_title_or_snippet() -> None:
     items = [
         {
             "type": "club",
-            "title": "Club 221",
-            "snippet": "Mock club 221",
+            "title": "Молочные коты",
+            "snippet": "Клуб по интересам",
         },
         {
             "type": "club",
-            "title": "Club 222",
-            "snippet": "Mock club 222",
+            "title": "Молочные твари",
+            "snippet": "Точное название",
         },
     ]
 
-    filtered = SearchService._city_numeric_query_filter(items=items, q="222", city="Astana")
+    filtered = SearchService._city_query_precision_filter(items=items, q="молочные твари", city="Astana")
 
     assert len(filtered) == 1
-    assert filtered[0]["title"] == "Club 222"
+    assert filtered[0]["title"] == "Молочные твари"
 
 
-def test_city_numeric_query_filter_returns_nearest_when_exact_missing() -> None:
+def test_city_query_precision_filter_returns_empty_for_partial_word_overlap() -> None:
+    items = [
+        {
+            "type": "club",
+            "title": "Молочные коты",
+            "snippet": "Описание про котов",
+        },
+        {
+            "type": "club",
+            "title": "Твари ночи",
+            "snippet": "Описание про другое",
+        },
+    ]
+
+    filtered = SearchService._city_query_precision_filter(items=items, q="молочные твари", city="Astana")
+
+    assert filtered == []
+
+
+def test_city_query_precision_filter_returns_nearest_number_when_exact_missing() -> None:
     items = [
         {
             "type": "club",
@@ -57,13 +76,13 @@ def test_city_numeric_query_filter_returns_nearest_when_exact_missing() -> None:
         },
     ]
 
-    filtered = SearchService._city_numeric_query_filter(items=items, q="222", city="Astana")
+    filtered = SearchService._city_query_precision_filter(items=items, q="222", city="Astana")
 
     assert len(filtered) == 1
     assert filtered[0]["title"] == "Club 221"
 
 
-def test_city_numeric_query_filter_keeps_results_when_query_has_no_numbers() -> None:
+def test_city_query_precision_filter_keeps_items_without_city_constraint() -> None:
     items = [
         {
             "type": "club",
@@ -72,6 +91,6 @@ def test_city_numeric_query_filter_keeps_results_when_query_has_no_numbers() -> 
         }
     ]
 
-    filtered = SearchService._city_numeric_query_filter(items=items, q="chess", city="Astana")
+    filtered = SearchService._city_query_precision_filter(items=items, q="chess", city=None)
 
     assert filtered == items

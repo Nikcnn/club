@@ -235,16 +235,44 @@ class SearchService:
         return int(tokens[0])
 
     @staticmethod
-    def _city_numeric_query_filter(items: list[dict[str, Any]], q: str, city: str | None) -> list[dict[str, Any]]:
+    def _city_query_precision_filter(items: list[dict[str, Any]], q: str, city: str | None) -> list[dict[str, Any]]:
         if not city:
             return items
 
-        numeric_tokens = SearchService._extract_numeric_tokens(q)
-        if not numeric_tokens:
+        normalized_query = q.casefold().strip()
+        if not normalized_query:
             return items
 
+        exact_phrase_matches: list[dict[str, Any]] = []
+        for item in items:
+            title = str(item.get("title") or "")
+            snippet = str(item.get("snippet") or "")
+            if normalized_query in title.casefold() or normalized_query in snippet.casefold():
+                exact_phrase_matches.append(item)
+
+        if exact_phrase_matches:
+            return exact_phrase_matches
+
+        query_tokens = [token for token in normalized_query.split() if token]
+        all_tokens_matches: list[dict[str, Any]] = []
+        for item in items:
+            searchable_text = " ".join(
+                [
+                    str(item.get("title") or ""),
+                    str(item.get("snippet") or ""),
+                ]
+            )
+            if SearchService._contains_all_tokens(searchable_text, query_tokens):
+                all_tokens_matches.append(item)
+
+        if all_tokens_matches:
+            return all_tokens_matches
+
+        numeric_tokens = SearchService._extract_numeric_tokens(q)
+        if not numeric_tokens:
+            return []
+
         query_number = int(numeric_tokens[0])
-        exact_matches: list[dict[str, Any]] = []
         nearest_candidates: list[tuple[int, int, dict[str, Any]]] = []
 
         for index, item in enumerate(items):
@@ -254,18 +282,11 @@ class SearchService:
                     str(item.get("snippet") or ""),
                 ]
             )
-            if SearchService._contains_all_tokens(searchable_text, numeric_tokens):
-                exact_matches.append(item)
-                continue
-
             item_number = SearchService._extract_first_number(searchable_text)
             if item_number is None:
                 continue
             distance = abs(item_number - query_number)
             nearest_candidates.append((distance, index, item))
-
-        if exact_matches:
-            return exact_matches
 
         if nearest_candidates:
             nearest_candidates.sort(key=lambda entry: (entry[0], entry[1]))
@@ -299,7 +320,7 @@ class SearchService:
             with_payload=True,
         )
         normalized_hits = [SearchService._normalize_hit(hit) for hit in hits]
-        return SearchService._city_numeric_query_filter(normalized_hits, q=q, city=city)
+        return SearchService._city_query_precision_filter(normalized_hits, q=q, city=city)
 
     @staticmethod
     def personalize_results(
