@@ -22,9 +22,9 @@ class Settings(BaseSettings):
     S3_BUCKET_PUBLIC: str = "public"
     S3_BUCKET_PRIVATE: str = "private"
 
-    ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str = "admin"
-
+    ADMIN_USER_MODEL: str = "User"
+    ADMIN_USER_MODEL_USERNAME_FIELD: str = "admin"
+    ADMIN_SECRET_KEY: str = "CHANGE_THIS_TO_A_SUPER_SECRET_STRING_XYZ_123"
     # Project Info
     PROJECT_NAME: str = "ClubVerse API"
     API_V1_STR: str = "" # Если нужен префикс /api/v1
