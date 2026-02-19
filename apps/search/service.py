@@ -228,7 +228,14 @@ class SearchService:
         return all(token.casefold() in lowered_text for token in tokens)
 
     @staticmethod
-    def _strict_city_query_filter(items: list[dict[str, Any]], q: str, city: str | None) -> list[dict[str, Any]]:
+    def _extract_first_number(text: str) -> int | None:
+        tokens = SearchService._extract_numeric_tokens(text)
+        if not tokens:
+            return None
+        return int(tokens[0])
+
+    @staticmethod
+    def _city_numeric_query_filter(items: list[dict[str, Any]], q: str, city: str | None) -> list[dict[str, Any]]:
         if not city:
             return items
 
@@ -236,8 +243,11 @@ class SearchService:
         if not numeric_tokens:
             return items
 
-        filtered_items: list[dict[str, Any]] = []
-        for item in items:
+        query_number = int(numeric_tokens[0])
+        exact_matches: list[dict[str, Any]] = []
+        nearest_candidates: list[tuple[int, int, dict[str, Any]]] = []
+
+        for index, item in enumerate(items):
             searchable_text = " ".join(
                 [
                     str(item.get("title") or ""),
@@ -245,8 +255,23 @@ class SearchService:
                 ]
             )
             if SearchService._contains_all_tokens(searchable_text, numeric_tokens):
-                filtered_items.append(item)
-        return filtered_items
+                exact_matches.append(item)
+                continue
+
+            item_number = SearchService._extract_first_number(searchable_text)
+            if item_number is None:
+                continue
+            distance = abs(item_number - query_number)
+            nearest_candidates.append((distance, index, item))
+
+        if exact_matches:
+            return exact_matches
+
+        if nearest_candidates:
+            nearest_candidates.sort(key=lambda entry: (entry[0], entry[1]))
+            return [nearest_candidates[0][2]]
+
+        return []
 
     @staticmethod
     async def semantic_search(
@@ -274,7 +299,7 @@ class SearchService:
             with_payload=True,
         )
         normalized_hits = [SearchService._normalize_hit(hit) for hit in hits]
-        return SearchService._strict_city_query_filter(normalized_hits, q=q, city=city)
+        return SearchService._city_numeric_query_filter(normalized_hits, q=q, city=city)
 
     @staticmethod
     def personalize_results(

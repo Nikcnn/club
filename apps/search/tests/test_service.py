@@ -23,27 +23,47 @@ def test_build_text_skips_none() -> None:
     assert text == "AI Club Almaty active"
 
 
-def test_strict_city_query_filter_removes_wrong_number_matches() -> None:
+def test_city_numeric_query_filter_prefers_exact_number_match() -> None:
     items = [
         {
             "type": "club",
-            "title": "Club 21",
-            "snippet": "Mock club 21",
+            "title": "Club 221",
+            "snippet": "Mock club 221",
         },
         {
             "type": "club",
-            "title": "Club 22",
-            "snippet": "Mock club 22",
+            "title": "Club 222",
+            "snippet": "Mock club 222",
         },
     ]
 
-    filtered = SearchService._strict_city_query_filter(items=items, q="22", city="Astana")
+    filtered = SearchService._city_numeric_query_filter(items=items, q="222", city="Astana")
 
     assert len(filtered) == 1
-    assert filtered[0]["title"] == "Club 22"
+    assert filtered[0]["title"] == "Club 222"
 
 
-def test_strict_city_query_filter_keeps_results_when_query_has_no_numbers() -> None:
+def test_city_numeric_query_filter_returns_nearest_when_exact_missing() -> None:
+    items = [
+        {
+            "type": "club",
+            "title": "Club 221",
+            "snippet": "Mock club 221",
+        },
+        {
+            "type": "club",
+            "title": "Club 230",
+            "snippet": "Mock club 230",
+        },
+    ]
+
+    filtered = SearchService._city_numeric_query_filter(items=items, q="222", city="Astana")
+
+    assert len(filtered) == 1
+    assert filtered[0]["title"] == "Club 221"
+
+
+def test_city_numeric_query_filter_keeps_results_when_query_has_no_numbers() -> None:
     items = [
         {
             "type": "club",
@@ -52,6 +72,6 @@ def test_strict_city_query_filter_keeps_results_when_query_has_no_numbers() -> N
         }
     ]
 
-    filtered = SearchService._strict_city_query_filter(items=items, q="chess", city="Astana")
+    filtered = SearchService._city_numeric_query_filter(items=items, q="chess", city="Astana")
 
     assert filtered == items
