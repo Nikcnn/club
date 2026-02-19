@@ -46,16 +46,4 @@ class UserService:
 
         return user
 
-    @staticmethod
-    async def get_current_news(db: AsyncSession, user_id: int) -> list[News]:
-        """
-        Возвращает ленту новостей.
-        Аргумент user_id можно использовать для персонализации в будущем.
-        """
-        # Выбираем новости, сортируем от новых к старым
-        query = select(News).order_by(desc(News.created_at))
 
-        result = await db.execute(query)
-
-        # .scalars().all() возвращает СПИСОК объектов, что и нужно для List[NewsResponse]
-        return list(result.scalars().all())

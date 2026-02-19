@@ -15,6 +15,7 @@ class UserCreateBase(BaseModel):
 class UserResponseBase(BaseModel):
     id: int
     email: EmailStr
+    username: str
     avatar_key: Optional[str] = None
     role: UserRole
     is_active: bool
