@@ -4,8 +4,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
-from fastadmin import fastapi_app as fastapi_admin_app
-
+from apps.admin.admin import setup_sqladmin
 from apps.admin.auth import admin_basic_auth
 
 
@@ -22,10 +21,9 @@ async def _build_dashboard_payload() -> dict[str, Any]:
 
 
 def setup_admin(app: FastAPI) -> None:
-    """Инициализация fastapi-admin + защищённый dashboard endpoint."""
+    """Инициализация SQLAdmin + защищённый dashboard endpoint."""
 
-    # Подключаем fastapi-admin под /admin
-    app.mount("/admin", fastapi_admin_app)
+    setup_sqladmin(app)
 
     @app.get("/admin-dashboard", tags=["admin"])
     async def admin_dashboard(_: str = Depends(admin_basic_auth)) -> JSONResponse:
