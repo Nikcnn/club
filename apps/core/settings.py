@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     ADMIN_USER_MODEL: str = "User"
     ADMIN_USER_MODEL_USERNAME_FIELD: str = "admin"
     ADMIN_SECRET_KEY: str = "CHANGE_THIS_TO_A_SUPER_SECRET_STRING_XYZ_123"
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "admin"
     # Project Info
     PROJECT_NAME: str = "ClubVerse API"
     API_V1_STR: str = "" # Если нужен префикс /api/v1

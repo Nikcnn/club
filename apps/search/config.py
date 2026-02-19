@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +15,19 @@ class SearchSettings(BaseSettings):
     VECTOR_SIZE: int | None = None
 
     SEARCH_SCORE_THRESHOLD: float | None = None
+
+
+    @field_validator("SEARCH_SCORE_THRESHOLD", mode="before")
+    @classmethod
+    def normalize_search_score_threshold(cls, value: object) -> object:
+        """Handle malformed env values like `0.3    ADMIN_USERNAME=...`."""
+
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if not cleaned:
+                return None
+            return cleaned.split()[0]
+        return value
 
     PERSONALIZATION_ENABLED: bool = True
     ROLE_BOOST_WEIGHT: float = 0.05
