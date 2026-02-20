@@ -9,6 +9,7 @@ class ClubBase(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     category: str = Field(..., description="Категория: IT, Sport, Art и т.д.")
     city: str
+    username: str = Field(..., min_length=2, max_length=30)
     description: Optional[str] = None
     website: Optional[str] = None
     social_links: Optional[Dict[str, str]] = Field(default_factory=dict)
@@ -17,7 +18,6 @@ class ClubBase(BaseModel):
 class ClubCreate(ClubBase):
     email: EmailStr
     password: str = Field(..., min_length=6)
-
 
 class ClubUpdate(BaseModel):
     name: Optional[str] = None

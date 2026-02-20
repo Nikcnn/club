@@ -29,4 +29,11 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "ClubVerse API"
     API_V1_STR: str = "" # Если нужен префикс /api/v1
 
+    PERSPECTIVE_API_KEY: str | None = None
+    MODERATION_ENABLED: bool = True
+    MODERATION_PROVIDER: str = "perspective"
+    MODERATION_FAIL_MODE: str = "approve"
+    TOXICITY_THRESHOLD_PENDING: float = 0.50
+    TOXICITY_THRESHOLD_REJECT: float = 0.80
+
 settings = Settings()

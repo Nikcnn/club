@@ -27,7 +27,7 @@ class ClubService:
             email=schema.email,
             hashed_password=hashed_pw,  # Поле из модели User
             role=UserRole.CLUB,  # Принудительно ставим роль
-
+            username=schema.username,
             name=schema.name,
             category=schema.category,
             city=schema.city,
