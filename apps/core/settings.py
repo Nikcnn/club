@@ -30,10 +30,11 @@ class Settings(BaseSettings):
     API_V1_STR: str = "" # Если нужен префикс /api/v1
 
     PERSPECTIVE_API_KEY: str | None = None
-    GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    OPENROUTER_API_KEY: str | None = None
+    OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1/chat/completions"
     MODERATION_ENABLED: bool = True
-    MODERATION_PROVIDER: str = "gemini"
+    MODERATION_PROVIDER: str = "openrouter"
     MODERATION_FAIL_MODE: str = "approve"
     TOXICITY_THRESHOLD_PENDING: float = 0.50
     TOXICITY_THRESHOLD_REJECT: float = 0.80

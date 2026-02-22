@@ -18,8 +18,6 @@ PERSPECTIVE_ATTRIBUTES = (
     "IDENTITY_ATTACK",
 )
 
-GEMINI_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-
 # Safety-net for obvious slurs when provider is unavailable/misconfigured.
 LOCAL_BLOCKLIST = {
     "fagot": 0.99,
@@ -43,8 +41,8 @@ class ModerationService:
 
         if provider == "perspective":
             return await ModerationService._analyze_with_perspective(text, local_labels)
-        if provider == "gemini":
-            return await ModerationService._analyze_with_gemini(text, local_labels)
+        if provider == "openrouter":
+            return await ModerationService._analyze_with_openrouter(text, local_labels)
 
         logger.warning("Unknown moderation provider '%s', using fallback", settings.MODERATION_PROVIDER)
         return ModerationService._fallback_result(extra_labels=local_labels)
@@ -70,17 +68,7 @@ class ModerationService:
                 )
 
             if response.status_code >= 400:
-                provider_error = ModerationService._extract_provider_error(response)
-                logger.warning(
-                    "Moderation provider returned %s: %s",
-                    response.status_code,
-                    provider_error or "unknown error",
-                )
-                labels = local_labels.copy()
-                labels["provider_http_status"] = response.status_code
-                if provider_error:
-                    labels["provider_error"] = provider_error
-                return ModerationService._fallback_result(extra_labels=labels)
+                return ModerationService._provider_error_fallback(response, local_labels)
         except Exception as exc:
             logger.exception("Moderation provider call failed: %s", exc)
             labels = local_labels.copy()
@@ -109,9 +97,9 @@ class ModerationService:
         return toxicity, scores
 
     @staticmethod
-    async def _analyze_with_gemini(text: str, local_labels: dict) -> tuple[float, dict]:
-        if not settings.GEMINI_API_KEY:
-            logger.warning("GEMINI_API_KEY is empty, using fallback moderation strategy")
+    async def _analyze_with_openrouter(text: str, local_labels: dict) -> tuple[float, dict]:
+        if not settings.OPENROUTER_API_KEY:
+            logger.warning("OPENROUTER_API_KEY is empty, using fallback moderation strategy")
             return ModerationService._fallback_result(extra_labels=local_labels)
 
         prompt = (
@@ -122,46 +110,62 @@ class ModerationService:
         )
 
         payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
+            "model": settings.OPENROUTER_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
         }
 
-        url = GEMINI_URL_TEMPLATE.format(model=settings.GEMINI_MODEL)
+        headers = {
+            "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        if settings.PROJECT_NAME:
+            headers["X-Title"] = settings.PROJECT_NAME
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(url, params={"key": settings.GEMINI_API_KEY}, json=payload)
+                response = await client.post(
+                    settings.OPENROUTER_BASE_URL,
+                    headers=headers,
+                    json=payload,
+                )
 
             if response.status_code >= 400:
-                provider_error = ModerationService._extract_provider_error(response)
-                logger.warning("Gemini moderation returned %s: %s", response.status_code, provider_error)
-                labels = local_labels.copy()
-                labels["provider_http_status"] = response.status_code
-                if provider_error:
-                    labels["provider_error"] = provider_error
-                return ModerationService._fallback_result(extra_labels=labels)
+                return ModerationService._provider_error_fallback(response, local_labels)
 
             data = response.json()
-            text_payload = (
-                data.get("candidates", [{}])[0]
-                .get("content", {})
-                .get("parts", [{}])[0]
-                .get("text", "")
-            )
-            if not text_payload:
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if not content:
                 return ModerationService._fallback_result(extra_labels=local_labels)
 
-            parsed = json.loads(text_payload)
+            parsed = json.loads(content)
             toxicity = float(parsed.get("toxicity", 0.0))
             labels = parsed.get("labels", {}) if isinstance(parsed.get("labels", {}), dict) else {}
             clean_labels = {k: float(v) for k, v in labels.items() if isinstance(v, (int, float))}
             clean_labels.update(local_labels)
+
             return min(max(toxicity, 0.0), 1.0), clean_labels
         except Exception as exc:
-            logger.exception("Gemini moderation call failed: %s", exc)
+            logger.exception("OpenRouter moderation call failed: %s", exc)
             labels = local_labels.copy()
             labels["provider_error"] = str(exc)
             return ModerationService._fallback_result(extra_labels=labels)
+
+    @staticmethod
+    def _provider_error_fallback(response: httpx.Response, local_labels: dict) -> tuple[float, dict]:
+        provider_error = ModerationService._extract_provider_error(response)
+        logger.warning(
+            "Moderation provider returned %s: %s",
+            response.status_code,
+            provider_error or "unknown error",
+        )
+        labels = local_labels.copy()
+        labels["provider_http_status"] = response.status_code
+        if provider_error:
+            labels["provider_error"] = provider_error
+        return ModerationService._fallback_result(extra_labels=labels)
 
     @staticmethod
     def decide_status(toxicity: float) -> tuple[str, bool]:
@@ -177,14 +181,13 @@ class ModerationService:
     def _fallback_result(extra_labels: dict | None = None) -> tuple[float, dict]:
         labels = extra_labels.copy() if extra_labels else {}
 
-        if labels:
-            numeric_values = [v for v in labels.values() if isinstance(v, (int, float))]
-            if numeric_values:
-                max_local = max(numeric_values)
-                status, _ = ModerationService.decide_status(max_local)
-                if status == ModerationStatus.REJECTED.value:
-                    labels["fallback"] = "local_blocklist"
-                    return max_local, labels
+        numeric_values = [v for v in labels.values() if isinstance(v, (int, float))]
+        if numeric_values:
+            max_local = max(numeric_values)
+            status, _ = ModerationService.decide_status(max_local)
+            if status == ModerationStatus.REJECTED.value:
+                labels["fallback"] = "local_blocklist"
+                return max_local, labels
 
         if settings.MODERATION_FAIL_MODE == "pending":
             labels["fallback"] = "pending"
@@ -201,8 +204,8 @@ class ModerationService:
         provider = settings.MODERATION_PROVIDER.strip().lower()
         if provider == "perspective":
             return await ModerationService._perspective_healthcheck()
-        if provider == "gemini":
-            return await ModerationService._gemini_healthcheck()
+        if provider == "openrouter":
+            return await ModerationService._openrouter_healthcheck()
 
         return {"ok": False, "state": "unsupported_provider", "provider": settings.MODERATION_PROVIDER}
 
@@ -233,39 +236,45 @@ class ModerationService:
                     "http_status": response.status_code,
                     "error": ModerationService._extract_provider_error(response),
                 }
-
             return {"ok": True, "state": "ok", "provider": "perspective"}
         except Exception as exc:
-            logger.exception("Moderation healthcheck failed: %s", exc)
+            logger.exception("Perspective healthcheck failed: %s", exc)
             return {"ok": False, "state": "request_failed", "provider": "perspective", "error": str(exc)}
 
     @staticmethod
-    async def _gemini_healthcheck() -> dict:
-        if not settings.GEMINI_API_KEY:
-            return {"ok": False, "state": "missing_api_key", "provider": "gemini"}
+    async def _openrouter_healthcheck() -> dict:
+        if not settings.OPENROUTER_API_KEY:
+            return {"ok": False, "state": "missing_api_key", "provider": "openrouter"}
 
-        url = GEMINI_URL_TEMPLATE.format(model=settings.GEMINI_MODEL)
         payload = {
-            "contents": [{"parts": [{"text": "Return JSON: {\"toxicity\":0,\"labels\":{}}"}]}],
-            "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
+            "model": settings.OPENROUTER_MODEL,
+            "messages": [{"role": "user", "content": "Return JSON: {\"toxicity\":0,\"labels\":{}}"}],
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
         }
+        headers = {
+            "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        if settings.PROJECT_NAME:
+            headers["X-Title"] = settings.PROJECT_NAME
 
         try:
             async with httpx.AsyncClient(timeout=8.0) as client:
-                response = await client.post(url, params={"key": settings.GEMINI_API_KEY}, json=payload)
+                response = await client.post(settings.OPENROUTER_BASE_URL, headers=headers, json=payload)
 
             if response.status_code >= 400:
                 return {
                     "ok": False,
                     "state": "provider_error",
-                    "provider": "gemini",
+                    "provider": "openrouter",
                     "http_status": response.status_code,
                     "error": ModerationService._extract_provider_error(response),
                 }
-            return {"ok": True, "state": "ok", "provider": "gemini"}
+            return {"ok": True, "state": "ok", "provider": "openrouter"}
         except Exception as exc:
-            logger.exception("Gemini healthcheck failed: %s", exc)
-            return {"ok": False, "state": "request_failed", "provider": "gemini", "error": str(exc)}
+            logger.exception("OpenRouter healthcheck failed: %s", exc)
+            return {"ok": False, "state": "request_failed", "provider": "openrouter", "error": str(exc)}
 
     @staticmethod
     def _local_signal(text: str) -> tuple[float, dict]:

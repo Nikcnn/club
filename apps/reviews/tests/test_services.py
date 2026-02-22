@@ -158,12 +158,12 @@ async def test_provider_healthcheck_returns_error_message(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_provider_healthcheck_gemini_missing_key(monkeypatch):
+async def test_provider_healthcheck_openrouter_missing_key(monkeypatch):
     from apps.moderation.service import ModerationService
 
     monkeypatch.setattr("apps.moderation.service.settings.MODERATION_ENABLED", True, raising=False)
-    monkeypatch.setattr("apps.moderation.service.settings.MODERATION_PROVIDER", "gemini", raising=False)
-    monkeypatch.setattr("apps.moderation.service.settings.GEMINI_API_KEY", None, raising=False)
+    monkeypatch.setattr("apps.moderation.service.settings.MODERATION_PROVIDER", "openrouter", raising=False)
+    monkeypatch.setattr("apps.moderation.service.settings.OPENROUTER_API_KEY", None, raising=False)
 
     result = await ModerationService.provider_healthcheck()
-    assert result == {"ok": False, "state": "missing_api_key", "provider": "gemini"}
+    assert result == {"ok": False, "state": "missing_api_key", "provider": "openrouter"}
