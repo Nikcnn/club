@@ -20,8 +20,9 @@ from apps.news.routes import router as news_router
 from apps.reviews.routes import router as reviews_router
 from apps.ratings.routes import router as ratings_router
 from apps.admin.setup import setup_admin
-from apps.search.qdrant_client import ensure_collection
+from apps.search.qdrant_client import ensure_collection, qdrant_state
 from apps.search.routes import router as search_router
+from apps.moderation.service import ModerationService
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -110,4 +111,16 @@ async def health_check():
     Проверка работоспособности сервиса (Health Check).
     Используется Docker'ом или балансировщиком нагрузки.
     """
-    return {"status": "ok", "version": "1.0.0"}
+    moderation_health = await ModerationService.provider_healthcheck()
+    return {
+        "status": "ok",
+        "version": "1.0.0",
+        "deps": {
+            "qdrant": {
+                "reachable": qdrant_state.reachable,
+                "collection_exists": qdrant_state.collection_exists,
+                "last_error": qdrant_state.last_error,
+            },
+            "moderation": moderation_health,
+        },
+    }

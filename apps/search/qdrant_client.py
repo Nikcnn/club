@@ -99,5 +99,5 @@ async def ensure_collection() -> bool:
         qdrant_state.reachable = False
         qdrant_state.collection_exists = False
         qdrant_state.last_error = str(exc)
-        logger.exception("Qdrant is not reachable during startup. Search is degraded.")
+        logger.warning("Qdrant is not reachable during startup. Search is degraded: %s", exc)
         return False

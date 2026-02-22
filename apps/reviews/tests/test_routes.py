@@ -1,4 +1,5 @@
-from unittest.mock import Mock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import FastAPI
@@ -12,11 +13,22 @@ async def test_review_club_success(monkeypatch):
     app = FastAPI()
     app.include_router(routes.router)
 
-    app.dependency_overrides[routes.get_current_user] = lambda: type("User", (), {"id": 3})()
+    app.dependency_overrides[routes.get_current_user] = lambda: SimpleNamespace(id=3)
     monkeypatch.setattr(
         routes.ReviewService,
         "add_club_review",
-        Mock(return_value={"id": 1, "text": "Great", "score": 5, "user_id": 3, "created_at": "2025-01-01"}),
+        Mock(
+            return_value={
+                "id": 1,
+                "text": "Great",
+                "score": 5,
+                "user_id": 3,
+                "is_approved": True,
+                "moderation_status": "APPROVED",
+                "toxicity_score": 0.1,
+                "created_at": "2025-01-01T00:00:00",
+            }
+        ),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -24,3 +36,64 @@ async def test_review_club_success(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["score"] == 5
+
+
+@pytest.mark.asyncio
+async def test_public_list_returns_only_approved(monkeypatch):
+    app = FastAPI()
+    app.include_router(routes.router)
+
+    monkeypatch.setattr(
+        routes.ReviewService,
+        "list_club_reviews",
+        AsyncMock(
+            return_value=[
+                {
+                    "id": 2,
+                    "text": "Nice",
+                    "score": 4,
+                    "user_id": 7,
+                    "is_approved": True,
+                    "moderation_status": "APPROVED",
+                    "toxicity_score": 0.01,
+                    "created_at": "2025-01-01T00:00:00",
+                }
+            ]
+        ),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/reviews/club/1")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": 2,
+            "text": "Nice",
+            "score": 4,
+            "user_id": 7,
+            "is_approved": True,
+            "moderation_status": "APPROVED",
+            "toxicity_score": 0.01,
+            "created_at": "2025-01-01T00:00:00",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_moderation_health(monkeypatch):
+    app = FastAPI()
+    app.include_router(routes.router)
+
+    app.dependency_overrides[routes.get_current_user] = lambda: SimpleNamespace(id=1)
+    monkeypatch.setattr(
+        routes.ModerationService,
+        "provider_healthcheck",
+        AsyncMock(return_value={"ok": True, "state": "ok", "provider": "perspective"}),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/reviews/moderation/health")
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
