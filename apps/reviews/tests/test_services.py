@@ -121,3 +121,37 @@ async def test_local_blocklist_rejects_even_without_provider(monkeypatch):
     assert review.is_approved is False
     assert review.toxicity_score >= 0.9
     recalculate_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_provider_healthcheck_returns_error_message(monkeypatch):
+    from apps.moderation.service import ModerationService
+
+    monkeypatch.setattr("apps.moderation.service.settings.MODERATION_ENABLED", True, raising=False)
+    monkeypatch.setattr("apps.moderation.service.settings.MODERATION_PROVIDER", "perspective", raising=False)
+    monkeypatch.setattr("apps.moderation.service.settings.PERSPECTIVE_API_KEY", "key", raising=False)
+
+    class Response:
+        status_code = 403
+        text = "forbidden"
+
+        @staticmethod
+        def json():
+            return {"error": {"message": "API key not valid"}}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, *args, **kwargs):
+            return Response()
+
+    monkeypatch.setattr("apps.moderation.service.httpx.AsyncClient", lambda timeout: Client())
+
+    result = await ModerationService.provider_healthcheck()
+    assert result["ok"] is False
+    assert result["http_status"] == 403
+    assert result["error"] == "API key not valid"

@@ -57,10 +57,24 @@ class ModerationService:
                     params={"key": settings.PERSPECTIVE_API_KEY},
                     json=payload,
                 )
-                response.raise_for_status()
+
+            if response.status_code >= 400:
+                provider_error = ModerationService._extract_provider_error(response)
+                logger.warning(
+                    "Moderation provider returned %s: %s",
+                    response.status_code,
+                    provider_error or "unknown error",
+                )
+                labels = local_labels.copy()
+                labels["provider_http_status"] = response.status_code
+                if provider_error:
+                    labels["provider_error"] = provider_error
+                return ModerationService._fallback_result(extra_labels=labels)
         except Exception as exc:
             logger.exception("Moderation provider call failed: %s", exc)
-            return ModerationService._fallback_result(extra_labels=local_labels)
+            labels = local_labels.copy()
+            labels["provider_error"] = str(exc)
+            return ModerationService._fallback_result(extra_labels=labels)
 
         body = response.json()
         scores: dict[str, float] = {}
@@ -144,6 +158,7 @@ class ModerationService:
                     "state": "provider_error",
                     "provider": "perspective",
                     "http_status": response.status_code,
+                    "error": ModerationService._extract_provider_error(response),
                 }
 
             return {"ok": True, "state": "ok", "provider": "perspective"}
@@ -167,3 +182,24 @@ class ModerationService:
             return 0.0, {}
 
         return max(matched.values()), matched
+
+
+    @staticmethod
+    def _extract_provider_error(response: httpx.Response) -> str | None:
+        try:
+            body = response.json()
+        except Exception:
+            return response.text[:300] if response.text else None
+
+        error_obj = body.get("error") if isinstance(body, dict) else None
+        if isinstance(error_obj, dict):
+            message = error_obj.get("message")
+            if isinstance(message, str):
+                return message
+
+        if isinstance(body, dict):
+            message = body.get("message")
+            if isinstance(message, str):
+                return message
+
+        return response.text[:300] if response.text else None
