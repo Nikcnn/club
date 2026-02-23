@@ -71,3 +71,24 @@ async def get_current_user(
         raise HTTPException(status_code=400, detail="User is inactive")
 
     return user
+
+# ==========================================
+# 5. GET CURRENT SUPERUSER (для админки)
+# ==========================================
+async def get_current_superuser(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """Проверка прав суперпользователя."""
+    if not hasattr(current_user, 'is_superuser') or not current_user.is_superuser:
+        raise HTTPException(
+            status_code=403,
+            detail="Not enough permissions"
+        )
+    return current_user
+
+__all__ = [
+    "get_db",
+    "oauth2_scheme",
+    "get_current_user",
+    "get_current_superuser",
+]
