@@ -20,3 +20,5 @@ from apps.ratings.models import ClubRating, OrganizationRating
 
 # 4. Search tracking
 from apps.search.models import SearchEvent, ClickEvent, UserSearchProfile
+
+from apps.clubs.edu_orgs.models import EducationalOrganization
