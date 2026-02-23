@@ -43,6 +43,6 @@ class OrganizationAdmin(admin.ModelAdmin):
     model = Organization
 
 
-def setup_admin(app: FastAPI) -> None:
-    """Подключает fastapi-amis-admin к основному приложению."""
+def mount_admin(app: FastAPI) -> None:
+    """Монтирует fastapi-amis-admin на приложение."""
     site.mount_app(app)
