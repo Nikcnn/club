@@ -20,7 +20,7 @@ class InvestorService:
             hashed_password=hashed_pw,  # Поле из User
             role=UserRole.INVESTOR,  # Принудительно ставим роль
             is_active=True,
-
+            username=schema.email,
             # Поля Investor
             bio=schema.bio,
             company_name=schema.company_name,

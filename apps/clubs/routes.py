@@ -16,7 +16,6 @@ router = APIRouter(prefix="/clubs", tags=["Clubs"])
 
 
 # === PUBLIC ENDPOINTS ===
-
 @router.post("/register", response_model=ClubResponse, status_code=status.HTTP_201_CREATED)
 async def register_club(
     schema: ClubCreate,
