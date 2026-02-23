@@ -23,24 +23,26 @@ class ClubService:
         hashed_pw = ClubService.get_password_hash(schema.password)
 
         # 2. Создаем объект (SQLAlchemy сам разберется, что часть полей идет в users, часть в clubs)
-        club = Club(
-            email=schema.email,
-            hashed_password=hashed_pw,  # Поле из модели User
-            role=UserRole.CLUB,  # Принудительно ставим роль
-            username=schema.username,
-            name=schema.name,
-            category=schema.category,
-            city=schema.city,
-            description=schema.description,
-            website=schema.website,
-            social_links=schema.social_links
-        )
-
-        db.add(club)
-        await db.commit()
-        await db.refresh(club)
-        await SearchService.upsert_single(SearchService.club_payload(club))
-        return club
+        try:
+            club = Club(
+                email=schema.email,
+                hashed_password=hashed_pw,  # Поле из модели User
+                role=UserRole.CLUB,  # Принудительно ставим роль
+                username=schema.email,
+                name=schema.name,
+                category=schema.category,
+                city=schema.city,
+                description=schema.description,
+                website=schema.website,
+                social_links=schema.social_links
+            )
+            db.add(club)
+            await db.commit()
+            await db.refresh(club)
+            await SearchService.upsert_single(SearchService.club_payload(club))
+            return club
+        except Exception as e:
+            print(e)
 
     @staticmethod
     async def get_by_id(db: AsyncSession, club_id: int) -> Optional[Club]:
