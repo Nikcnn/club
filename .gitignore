@@ -6,3 +6,5 @@
 .idea
 .venv
 .env
+.env.docker
+.requirements.docker.txt

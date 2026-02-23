@@ -12,12 +12,12 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Только зависимости (кэшируется)
-COPY requirements.ini .
+COPY requirements.docker.txt ./requirements.docker.txt
 
 # ВАЖНО: если torch у тебя как "+cpu", часто нужен pytorch index.
 # Если после перехода на 3.12 всё равно не ставится — см. секцию про torch ниже.
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.ini
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.docker.txt
 
 # Stage 2 — Runtime
 FROM python:3.12-slim AS runtime
