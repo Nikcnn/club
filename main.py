@@ -22,6 +22,7 @@ from apps.ratings.routes import router as ratings_router
 # from apps.admin.setup import setup_admin
 from apps.search.qdrant_client import ensure_collection
 from apps.search.routes import router as search_router
+from apps.core.routes import router as media_router
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await ensure_collection()
@@ -89,6 +90,8 @@ app.include_router(ratings_router)
 
 # /search
 app.include_router(search_router)
+# /media
+app.include_router(media_router)
 
 
 # ==========================================

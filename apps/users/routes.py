@@ -119,7 +119,12 @@ async def upload_my_avatar(
     Возвращает обновленного пользователя.
     """
     object_key = await upload_image_to_minio(avatar, folder=f"users/{current_user.id}")
-    current_user.avatar_key = object_key
+
+    user = await UserService.get_by_id(db, current_user.id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    user.avatar_key = object_key
     await db.commit()
-    await db.refresh(current_user)
-    return current_user
+    await db.refresh(user)
+    return user

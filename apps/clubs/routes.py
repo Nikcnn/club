@@ -1,7 +1,8 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.core.storage import upload_image_to_minio
 from apps.db.dependencies import get_db
 from apps.users.dependencies import get_current_user
 from apps.users.models import User, UserRole
@@ -74,3 +75,23 @@ async def update_my_club_profile(
     club = await ClubService.get_by_id(db, current_user.id)
 
     return await ClubService.update(db, club, schema)
+
+
+@router.post("/me/logo", response_model=ClubResponse)
+async def upload_my_logo(
+    logo: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Загрузка логотипа клуба в MinIO с сохранением ключа в профиле."""
+    if current_user.role != UserRole.CLUB:
+        raise HTTPException(status_code=403, detail="Only clubs can upload logo")
+
+    club = await ClubService.get_by_id(db, current_user.id)
+    if not club:
+        raise HTTPException(status_code=404, detail="Club not found")
+
+    club.logo_key = await upload_image_to_minio(logo, folder=f"clubs/{current_user.id}")
+    await db.commit()
+    await db.refresh(club)
+    return club
