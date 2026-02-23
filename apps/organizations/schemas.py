@@ -6,6 +6,7 @@ from pydantic import BaseModel, EmailStr, Field, ConfigDict, HttpUrl
 class OrganizationBase(BaseModel):
     name: str = Field(..., min_length=2, max_length=200)
     city: str
+    username: str = Field(..., min_length=2, max_length=30)
     description: Optional[str] = None
     website: Optional[str] = None
     logo_key: Optional[str] = None
