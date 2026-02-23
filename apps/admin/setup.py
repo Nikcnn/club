@@ -124,7 +124,9 @@ def setup_admin(app: FastAPI, sync_engine):
         column_list = ["id", "club_id", "title", "status", "starts_at", "ends_at", "created_at"]
         column_searchable_list = ["title"]
         column_sortable_list = ["id", "starts_at", "ends_at", "created_at"]
-        form_columns = ["club", "title", "description", "starts_at", "ends_at", "photo_key", "status"]
+        # В SQLAdmin возникают ошибки при сохранении relationship на модель Club
+        # c PK=FK (clubs.id -> users.id), поэтому редактируем через FK-поле.
+        form_columns = ["club_id", "title", "description", "starts_at", "ends_at", "photo_key", "status"]
 
     admin.add_view(CompetitionAdmin)
 
@@ -135,7 +137,7 @@ def setup_admin(app: FastAPI, sync_engine):
         column_searchable_list = ["title"]
         column_sortable_list = ["id", "goal_amount", "starts_at", "ends_at", "created_at"]
         form_columns = [
-            "club",
+            "club_id",
             "title",
             "description",
             "goal_amount",
@@ -153,7 +155,7 @@ def setup_admin(app: FastAPI, sync_engine):
         name_plural = "Инвестиции"
         column_list = ["id", "campaign_id", "investor_id", "amount", "type", "status", "paid_at", "created_at"]
         column_sortable_list = ["id", "amount", "paid_at", "created_at"]
-        form_columns = ["campaign", "investor", "amount", "type", "status", "paid_at"]
+        form_columns = ["campaign_id", "investor_id", "amount", "type", "status", "paid_at"]
 
     admin.add_view(InvestmentAdmin)
 
@@ -163,7 +165,7 @@ def setup_admin(app: FastAPI, sync_engine):
         column_list = ["id", "club_id", "title", "is_published", "published_at", "created_at"]
         column_searchable_list = ["title", "body"]
         column_sortable_list = ["id", "published_at", "created_at"]
-        form_columns = ["club", "title", "body", "cover_key", "published_at", "is_published"]
+        form_columns = ["club_id", "title", "body", "cover_key", "published_at", "is_published"]
 
     admin.add_view(NewsAdmin)
 
@@ -212,7 +214,7 @@ def setup_admin(app: FastAPI, sync_engine):
         name_plural = "Рейтинги клубов"
         column_list = ["id", "club_id", "avg_score", "review_count", "updated_at"]
         column_sortable_list = ["id", "avg_score", "review_count", "updated_at"]
-        form_columns = ["club", "avg_score", "review_count"]
+        form_columns = ["club_id", "avg_score", "review_count"]
 
     admin.add_view(ClubRatingAdmin)
 
@@ -221,7 +223,7 @@ def setup_admin(app: FastAPI, sync_engine):
         name_plural = "Рейтинги организаций"
         column_list = ["id", "organization_id", "avg_score", "review_count", "updated_at"]
         column_sortable_list = ["id", "avg_score", "review_count", "updated_at"]
-        form_columns = ["organization", "avg_score", "review_count"]
+        form_columns = ["organization_id", "avg_score", "review_count"]
 
     admin.add_view(OrganizationRatingAdmin)
 
@@ -231,8 +233,8 @@ def setup_admin(app: FastAPI, sync_engine):
         column_list = ["id", "club_id", "user_id", "score", "moderation_status", "is_approved", "created_at"]
         column_sortable_list = ["id", "score", "created_at"]
         form_columns = [
-            "club",
-            "author",
+            "club_id",
+            "user_id",
             "text",
             "score",
             "is_approved",
@@ -249,8 +251,8 @@ def setup_admin(app: FastAPI, sync_engine):
         column_list = ["id", "organization_id", "user_id", "score", "moderation_status", "is_approved", "created_at"]
         column_sortable_list = ["id", "score", "created_at"]
         form_columns = [
-            "organization",
-            "author",
+            "organization_id",
+            "user_id",
             "text",
             "score",
             "is_approved",
