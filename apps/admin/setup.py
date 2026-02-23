@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from sqlalchemy import inspect
 from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
 from starlette.requests import Request
@@ -49,6 +50,50 @@ def setup_admin(app: FastAPI, sync_engine):
     class BaseAdmin(ModelView):
         can_export = True
         page_size = 50
+        relation_fk_map: dict[str, str] = {}
+
+        @staticmethod
+        def _extract_pk_value(value):
+            if value in (None, ""):
+                return None
+            if isinstance(value, dict):
+                if "id" in value:
+                    return value["id"]
+                if value:
+                    return next(iter(value.values()))
+                return None
+            if hasattr(value, "id"):
+                return getattr(value, "id")
+            return value
+
+        def _normalize_relation_payload(self, data: dict) -> dict:
+            if not self.relation_fk_map:
+                return data
+
+            normalized = dict(data)
+            mapper = inspect(self.model)
+            relation_names = {rel.key for rel in mapper.relationships}
+
+            for relation_name, fk_name in self.relation_fk_map.items():
+                if relation_name not in normalized:
+                    continue
+                if relation_name not in relation_names:
+                    continue
+                if normalized.get(fk_name) not in (None, ""):
+                    normalized.pop(relation_name, None)
+                    continue
+
+                pk_value = self._extract_pk_value(normalized.pop(relation_name, None))
+                if pk_value is not None:
+                    normalized[fk_name] = pk_value
+
+            return normalized
+
+        async def insert_model(self, request, data):
+            return await super().insert_model(request, self._normalize_relation_payload(data))
+
+        async def update_model(self, request, pk, data):
+            return await super().update_model(request, pk, self._normalize_relation_payload(data))
 
     class UserAdmin(BaseAdmin, model=User):
         name = "Пользователь"
@@ -119,23 +164,27 @@ def setup_admin(app: FastAPI, sync_engine):
     admin.add_view(OrganizationAdmin)
 
     class CompetitionAdmin(BaseAdmin, model=Competition):
+        relation_fk_map = {"club": "club_id"}
         name = "Соревнование"
         name_plural = "Соревнования"
         column_list = ["id", "club_id", "title", "status", "starts_at", "ends_at", "created_at"]
         column_searchable_list = ["title"]
         column_sortable_list = ["id", "starts_at", "ends_at", "created_at"]
-        form_columns = ["club", "title", "description", "starts_at", "ends_at", "photo_key", "status"]
+        # В SQLAdmin возникают ошибки при сохранении relationship на модель Club
+        # c PK=FK (clubs.id -> users.id), поэтому редактируем через FK-поле.
+        form_columns = ["club_id", "title", "description", "starts_at", "ends_at", "photo_key", "status"]
 
     admin.add_view(CompetitionAdmin)
 
     class CampaignAdmin(BaseAdmin, model=Campaign):
+        relation_fk_map = {"club": "club_id"}
         name = "Кампания"
         name_plural = "Кампании"
         column_list = ["id", "club_id", "title", "goal_amount", "status", "starts_at", "ends_at", "created_at"]
         column_searchable_list = ["title"]
         column_sortable_list = ["id", "goal_amount", "starts_at", "ends_at", "created_at"]
         form_columns = [
-            "club",
+            "club_id",
             "title",
             "description",
             "goal_amount",
@@ -149,21 +198,23 @@ def setup_admin(app: FastAPI, sync_engine):
     admin.add_view(CampaignAdmin)
 
     class InvestmentAdmin(BaseAdmin, model=Investment):
+        relation_fk_map = {"campaign": "campaign_id", "investor": "investor_id"}
         name = "Инвестиция"
         name_plural = "Инвестиции"
         column_list = ["id", "campaign_id", "investor_id", "amount", "type", "status", "paid_at", "created_at"]
         column_sortable_list = ["id", "amount", "paid_at", "created_at"]
-        form_columns = ["campaign", "investor", "amount", "type", "status", "paid_at"]
+        form_columns = ["campaign_id", "investor_id", "amount", "type", "status", "paid_at"]
 
     admin.add_view(InvestmentAdmin)
 
     class NewsAdmin(BaseAdmin, model=News):
+        relation_fk_map = {"club": "club_id"}
         name = "Новость"
         name_plural = "Новости"
         column_list = ["id", "club_id", "title", "is_published", "published_at", "created_at"]
         column_searchable_list = ["title", "body"]
         column_sortable_list = ["id", "published_at", "created_at"]
-        form_columns = ["club", "title", "body", "cover_key", "published_at", "is_published"]
+        form_columns = ["club_id", "title", "body", "cover_key", "published_at", "is_published"]
 
     admin.add_view(NewsAdmin)
 
@@ -208,31 +259,34 @@ def setup_admin(app: FastAPI, sync_engine):
     admin.add_view(WebhookEventAdmin)
 
     class ClubRatingAdmin(BaseAdmin, model=ClubRating):
+        relation_fk_map = {"club": "club_id"}
         name = "Рейтинг клуба"
         name_plural = "Рейтинги клубов"
         column_list = ["id", "club_id", "avg_score", "review_count", "updated_at"]
         column_sortable_list = ["id", "avg_score", "review_count", "updated_at"]
-        form_columns = ["club", "avg_score", "review_count"]
+        form_columns = ["club_id", "avg_score", "review_count"]
 
     admin.add_view(ClubRatingAdmin)
 
     class OrganizationRatingAdmin(BaseAdmin, model=OrganizationRating):
+        relation_fk_map = {"organization": "organization_id"}
         name = "Рейтинг организации"
         name_plural = "Рейтинги организаций"
         column_list = ["id", "organization_id", "avg_score", "review_count", "updated_at"]
         column_sortable_list = ["id", "avg_score", "review_count", "updated_at"]
-        form_columns = ["organization", "avg_score", "review_count"]
+        form_columns = ["organization_id", "avg_score", "review_count"]
 
     admin.add_view(OrganizationRatingAdmin)
 
     class ClubReviewAdmin(BaseAdmin, model=ClubReview):
+        relation_fk_map = {"club": "club_id", "author": "user_id"}
         name = "Отзыв о клубе"
         name_plural = "Отзывы о клубах"
         column_list = ["id", "club_id", "user_id", "score", "moderation_status", "is_approved", "created_at"]
         column_sortable_list = ["id", "score", "created_at"]
         form_columns = [
-            "club",
-            "author",
+            "club_id",
+            "user_id",
             "text",
             "score",
             "is_approved",
@@ -244,13 +298,14 @@ def setup_admin(app: FastAPI, sync_engine):
     admin.add_view(ClubReviewAdmin)
 
     class OrganizationReviewAdmin(BaseAdmin, model=OrganizationReview):
+        relation_fk_map = {"organization": "organization_id", "author": "user_id"}
         name = "Отзыв об организации"
         name_plural = "Отзывы об организациях"
         column_list = ["id", "organization_id", "user_id", "score", "moderation_status", "is_approved", "created_at"]
         column_sortable_list = ["id", "score", "created_at"]
         form_columns = [
-            "organization",
-            "author",
+            "organization_id",
+            "user_id",
             "text",
             "score",
             "is_approved",
