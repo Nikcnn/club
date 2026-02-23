@@ -1,8 +1,9 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.core.storage import upload_image_to_minio
 from apps.db.dependencies import get_db
 from apps.investors.schemas import InvestorCreate, InvestorUpdate, InvestorResponse
 from apps.investors.services import InvestorService
@@ -73,3 +74,23 @@ async def update_my_profile(
     investor = await InvestorService.get_by_id(db, current_user.id)
 
     return await InvestorService.update(db, investor, schema)
+
+
+@router.post("/me/avatar", response_model=InvestorResponse)
+async def upload_my_avatar(
+    avatar: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Загрузка аватара инвестора в MinIO с сохранением ключа в профиле."""
+    if current_user.role != UserRole.INVESTOR:
+        raise HTTPException(status_code=403, detail="Только инвесторы могут загружать аватар")
+
+    investor = await InvestorService.get_by_id(db, current_user.id)
+    if not investor:
+        raise HTTPException(status_code=404, detail="Инвестор не найден")
+
+    investor.avatar_key = await upload_image_to_minio(avatar, folder=f"investors/{current_user.id}")
+    await db.commit()
+    await db.refresh(investor)
+    return investor

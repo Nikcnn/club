@@ -1,7 +1,8 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.core.storage import upload_image_to_minio
 from apps.db.dependencies import get_db
 from apps.users.dependencies import get_current_user
 from apps.users.models import User, UserRole
@@ -45,6 +46,51 @@ async def create_campaign(
     # Создаем кампанию, привязывая к ID пользователя (клуба)
     return await CampaignService.create(db, schema, club_id=current_user.id)
 
+
+
+@router.post("/campaigns/{campaign_id}/cover", response_model=CampaignResponse)
+async def upload_campaign_cover(
+    campaign_id: int,
+    cover: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Загрузка обложки кампании в MinIO."""
+    campaign = await CampaignService.get_by_id(db, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Кампания не найдена.")
+
+    if campaign.club_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Вы не являетесь владельцем этой кампании.")
+
+    campaign.cover_key = await upload_image_to_minio(cover, folder=f"campaigns/{campaign_id}/cover")
+    await db.commit()
+    await db.refresh(campaign)
+    return campaign
+
+
+@router.post("/campaigns/{campaign_id}/gallery", response_model=CampaignResponse)
+async def upload_campaign_gallery_image(
+    campaign_id: int,
+    image: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Загрузка фотографии в галерею кампании в MinIO."""
+    campaign = await CampaignService.get_by_id(db, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Кампания не найдена.")
+
+    if campaign.club_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Вы не являетесь владельцем этой кампании.")
+
+    object_key = await upload_image_to_minio(image, folder=f"campaigns/{campaign_id}/gallery")
+    current_gallery = list(campaign.gallery_keys or [])
+    current_gallery.append(object_key)
+    campaign.gallery_keys = current_gallery
+    await db.commit()
+    await db.refresh(campaign)
+    return campaign
 @router.get("/campaigns/{campaign_id}/", response_model=CampaignResponse)
 async def get_campaign_detail(
     campaign_id: int,

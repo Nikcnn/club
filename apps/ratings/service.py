@@ -40,7 +40,7 @@ class RatingService:
         stmt = select(
             func.count(ClubReview.id).label("count"),
             func.avg(ClubReview.score).label("avg")
-        ).where(ClubReview.club_id == club_id)
+        ).where(ClubReview.club_id == club_id, ClubReview.is_approved.is_(True))
 
         result = await db.execute(stmt)
         stats = result.one()
@@ -90,7 +90,7 @@ class RatingService:
         stmt = select(
             func.count(OrganizationReview.id),
             func.avg(OrganizationReview.score)
-        ).where(OrganizationReview.organization_id == org_id)
+        ).where(OrganizationReview.organization_id == org_id, OrganizationReview.is_approved.is_(True))
 
         result = await db.execute(stmt)
         count, avg = result.one()

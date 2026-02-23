@@ -11,6 +11,7 @@ from apps.core.settings import settings
 # Импорт роутеров из всех модулей
 from apps.users.routes import router as users_router
 from apps.clubs.routes import router as clubs_router
+from apps.clubs.edu_orgs.routes import router as edu_orgs_router
 from apps.investors.routes import router as investors_router
 from apps.organizations.routes import router as organizations_router
 from apps.funding.routes import router as funding_router
@@ -19,10 +20,10 @@ from apps.competitions.routes import router as competitions_router
 from apps.news.routes import router as news_router
 from apps.reviews.routes import router as reviews_router
 from apps.ratings.routes import router as ratings_router
-from apps.admin.setup import setup_admin
+# from apps.admin.setup import setup_admin
 from apps.search.qdrant_client import ensure_collection
 from apps.search.routes import router as search_router
-
+from apps.core.routes import router as media_router
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await ensure_collection()
@@ -53,7 +54,7 @@ app.add_middleware(
 )
 
 # Инициализация админ-панели (/admin)
-setup_admin(app)
+# setup_admin(app)
 
 # ==========================================
 # 2. ПОДКЛЮЧЕНИЕ РОУТЕРОВ (Routes)
@@ -66,6 +67,7 @@ app.include_router(users_router)
 # --- Profiles ---
 # /clubs, /investors, /organizations
 app.include_router(clubs_router)
+app.include_router(edu_orgs_router)
 app.include_router(investors_router)
 app.include_router(organizations_router)
 
@@ -90,6 +92,8 @@ app.include_router(ratings_router)
 
 # /search
 app.include_router(search_router)
+# /media
+app.include_router(media_router)
 
 
 # ==========================================

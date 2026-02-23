@@ -11,6 +11,7 @@ class InvestorBase(BaseModel):
 
 class InvestorCreate(InvestorBase):
     email: EmailStr
+    username: None = None
     password: str = Field(..., min_length=6)
 
 
