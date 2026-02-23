@@ -2,6 +2,7 @@ from typing import Optional, List, TYPE_CHECKING
 from sqlalchemy import String, ForeignKey, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from apps.clubs.edu_orgs.models import EducationalOrganizations
 from apps.users.models import User, UserRole
 
 if TYPE_CHECKING:
@@ -23,6 +24,7 @@ class Club(User):
     category: Mapped[str] = mapped_column(String(100), index=True)  # IT, Sport, Art
     city: Mapped[str] = mapped_column(String(100), index=True)
     description: Mapped[Optional[str]] = mapped_column(Text)
+    edu_org_id: Mapped[int] = mapped_column(ForeignKey("educational_organizations.id"))
 
     # Медиа и контакты
     logo_key: Mapped[Optional[str]] = mapped_column(String(512))  # Ссылка на S3
@@ -38,7 +40,12 @@ class Club(User):
         cascade="all, delete-orphan"
     )
 
-
+    educational_organizations: Mapped[List["EducationalOrganizations"]] = relationship(
+        "EducationalOrganization",
+        back_populates="edu_org",
+        lazy="selectin",
+        cascade="all, delete-orphan"
+    )
 
     news: Mapped[List["News"]] = relationship(
         "News",
