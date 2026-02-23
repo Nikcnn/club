@@ -12,6 +12,7 @@ class ClubBase(BaseModel):
     description: Optional[str] = None
     website: Optional[str] = None
     social_links: Optional[Dict[str, str]] = Field(default_factory=dict)
+    edu_org_id: Optional[int] = None
 
 
 class ClubCreate(ClubBase):
@@ -26,6 +27,7 @@ class ClubUpdate(BaseModel):
     website: Optional[str] = None
     social_links: Optional[Dict[str, str]] = None
     logo_key: Optional[str] = None
+    edu_org_id: Optional[int] = None
 
 
 class ClubResponse(ClubBase):

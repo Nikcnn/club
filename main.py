@@ -11,6 +11,7 @@ from apps.core.settings import settings
 # Импорт роутеров из всех модулей
 from apps.users.routes import router as users_router
 from apps.clubs.routes import router as clubs_router
+from apps.clubs.edu_orgs.routes import router as edu_orgs_router
 from apps.investors.routes import router as investors_router
 from apps.organizations.routes import router as organizations_router
 from apps.funding.routes import router as funding_router
@@ -66,6 +67,7 @@ app.include_router(users_router)
 # --- Profiles ---
 # /clubs, /investors, /organizations
 app.include_router(clubs_router)
+app.include_router(edu_orgs_router)
 app.include_router(investors_router)
 app.include_router(organizations_router)
 
