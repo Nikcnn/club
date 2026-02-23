@@ -7,7 +7,8 @@ from apps.competitions.models import CompetitionStatus
 from apps.competitions.schemas import (
     CompetitionCreate,
     CompetitionResponse,
-    CompetitionUpdate
+    CompetitionSubscriptionResponse,
+    CompetitionUpdate,
 )
 from apps.competitions.services import CompetitionService
 from apps.core.storage import upload_image_to_minio
@@ -66,7 +67,11 @@ async def update_competition(
     if comp.club_id != current_user.id:
         raise HTTPException(status_code=403, detail="Вы не владелец этого соревнования")
 
-    return await CompetitionService.update(db, comp_id, schema)
+    try:
+        return await CompetitionService.update(db, comp_id, schema)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 
 @router.post("/{comp_id}/photo", response_model=CompetitionResponse)
 async def upload_competition_photo(
@@ -86,3 +91,29 @@ async def upload_competition_photo(
     await db.commit()
     await db.refresh(comp)
     return comp
+
+
+@router.post("/{comp_id}/subscribe", response_model=CompetitionSubscriptionResponse, status_code=status.HTTP_201_CREATED)
+async def subscribe_to_competition(
+    comp_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return await CompetitionService.subscribe_user(db, comp_id=comp_id, user_id=current_user.id)
+    except ValueError as exc:
+        detail = str(exc)
+        code = 404 if detail == "Соревнование не найдено" else 400
+        raise HTTPException(status_code=code, detail=detail) from exc
+
+
+@router.delete("/{comp_id}/subscribe", status_code=status.HTTP_204_NO_CONTENT)
+async def unsubscribe_from_competition(
+    comp_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    removed = await CompetitionService.unsubscribe_user(db, comp_id=comp_id, user_id=current_user.id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Подписка не найдена")
+    return None

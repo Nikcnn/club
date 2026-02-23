@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from apps.db.base import Base
@@ -11,6 +11,7 @@ from apps.db.mixins import TimestampMixin
 
 if TYPE_CHECKING:
     from apps.clubs.models import Club
+    from apps.users.models import User
 
 class CompetitionStatus(str, enum.Enum):
     DRAFT = "draft"
@@ -47,7 +48,36 @@ class Competition(Base, TimestampMixin):
 
     # Связь с клубом-организатором
     club: Mapped["Club"] = relationship("Club", back_populates="competitions", lazy="selectin")
+    subscriptions: Mapped[list["CompetitionSubscription"]] = relationship(
+        "CompetitionSubscription",
+        back_populates="competition",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
     __table_args__ = (
         Index("ix_competition_dates", "starts_at", "ends_at"),
+    )
+
+
+class CompetitionSubscription(Base, TimestampMixin):
+    __tablename__ = "competition_subscriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    competition_id: Mapped[int] = mapped_column(
+        ForeignKey("competitions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    competition: Mapped["Competition"] = relationship("Competition", back_populates="subscriptions", lazy="selectin")
+    user: Mapped["User"] = relationship("User", lazy="selectin")
+
+    __table_args__ = (
+        UniqueConstraint("competition_id", "user_id", name="uq_competition_subscription"),
     )
