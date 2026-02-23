@@ -61,7 +61,8 @@ class ModerationService:
         try:
             body = response.json()
             raw_content = body["choices"][0]["message"]["content"]
-            parsed = ModerationService._parse_model_json(raw_content)
+            normalized_content = ModerationService._normalize_content(raw_content)
+            parsed = ModerationService._parse_model_json(normalized_content)
 
             toxicity = float(parsed.get("toxicity_score", 0.0))
             toxicity = max(0.0, min(1.0, toxicity))
@@ -85,8 +86,33 @@ class ModerationService:
             return base
         return f"{base}/chat/completions"
 
+
     @staticmethod
-    def _parse_model_json(content: str) -> dict:
+    def _normalize_content(content: str | list | dict) -> str | dict:
+        if isinstance(content, dict):
+            return content
+
+        if isinstance(content, str):
+            return content
+
+        if isinstance(content, list):
+            chunks: list[str] = []
+            for item in content:
+                if isinstance(item, str):
+                    chunks.append(item)
+                    continue
+
+                if isinstance(item, dict):
+                    text = item.get("text")
+                    if isinstance(text, str):
+                        chunks.append(text)
+            if chunks:
+                return "\n".join(chunks)
+
+        raise ValueError("Unsupported model response content format")
+
+    @staticmethod
+    def _parse_model_json(content: str | dict) -> dict:
         if isinstance(content, dict):
             return content
 
