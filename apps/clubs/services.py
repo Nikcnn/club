@@ -34,7 +34,8 @@ class ClubService:
                 city=schema.city,
                 description=schema.description,
                 website=schema.website,
-                social_links=schema.social_links
+                social_links=schema.social_links,
+                edu_org_id=schema.edu_org_id,
             )
             db.add(club)
             await db.commit()
