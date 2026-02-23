@@ -1,3 +1,4 @@
+import json
 import logging
 
 import httpx
@@ -7,34 +8,41 @@ from apps.reviews.models import ModerationStatus
 
 logger = logging.getLogger(__name__)
 
-PERSPECTIVE_URL = "https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze"
-PERSPECTIVE_ATTRIBUTES = (
-    "TOXICITY",
-    "SEVERE_TOXICITY",
-    "INSULT",
-    "PROFANITY",
-    "THREAT",
-    "IDENTITY_ATTACK",
-)
-
 
 class ModerationService:
     @staticmethod
     async def analyze_text(text: str) -> tuple[float, dict]:
-        if not settings.MODERATION_ENABLED or not settings.PERSPECTIVE_API_KEY:
+        if not settings.MODERATION_ENABLED or not settings.OPENROUTER_API_KEY:
             return ModerationService._fallback_result()
 
         payload = {
-            "comment": {"text": text},
-            "languages": ["ru", "en"],
-            "requestedAttributes": {attribute: {} for attribute in PERSPECTIVE_ATTRIBUTES},
+            "model": settings.OPENROUTER_MODERATION_MODEL,
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a moderation classifier. "
+                        "Return only JSON with keys: toxicity_score (0..1), "
+                        "labels (object with boolean flags), reason (string)."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Analyze this text for policy violations: {text}",
+                },
+            ],
         }
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
-                    PERSPECTIVE_URL,
-                    params={"key": settings.PERSPECTIVE_API_KEY},
+                    f"{settings.OPENROUTER_BASE_URL}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
                     json=payload,
                 )
                 response.raise_for_status()
@@ -42,21 +50,20 @@ class ModerationService:
             logger.exception("Moderation provider call failed: %s", exc)
             return ModerationService._fallback_result()
 
-        body = response.json()
-        scores: dict[str, float] = {}
-
-        for attribute in PERSPECTIVE_ATTRIBUTES:
-            value = (
-                body.get("attributeScores", {})
-                .get(attribute, {})
-                .get("summaryScore", {})
-                .get("value")
-            )
-            if isinstance(value, (int, float)):
-                scores[attribute] = float(value)
-
-        toxicity = max(scores.values(), default=0.0)
-        return toxicity, scores
+        try:
+            body = response.json()
+            content = body["choices"][0]["message"]["content"]
+            parsed = json.loads(content)
+            toxicity = float(parsed.get("toxicity_score", 0.0))
+            toxicity = max(0.0, min(1.0, toxicity))
+            labels = parsed.get("labels") if isinstance(parsed.get("labels"), dict) else {}
+            reason = parsed.get("reason")
+            if reason is not None:
+                labels["reason"] = str(reason)
+            return toxicity, labels
+        except Exception as exc:
+            logger.exception("Failed to parse moderation response: %s", exc)
+            return ModerationService._fallback_result()
 
     @staticmethod
     def decide_status(toxicity: float) -> tuple[str, bool]:
