@@ -34,7 +34,8 @@ def _build_public_object_url(bucket: str, object_name: str) -> str:
 
 async def upload_image_to_minio(file: UploadFile, folder: str) -> str:
     """
-    Загружает изображение в MinIO в публичный бакет и возвращает КЛЮЧ объекта (object_key), а не URL.
+    Загружает изображение в MinIO (S3-совместимое хранилище) в публичный бакет
+    и возвращает КЛЮЧ объекта (object_key), а не URL.
     Пример возвращаемого значения: "users/42/0f1a2b3c4d.png".
     Чтобы получить публичный URL, используйте build_public_url(object_key).
     """
@@ -77,5 +78,14 @@ async def upload_image_to_minio(file: UploadFile, folder: str) -> str:
         content_type=file.content_type,
     )
 
-    # Возвращаем ключ (для хранения в *_key колонках)
     return object_name
+
+
+async def upload_image_to_s3(file: UploadFile, folder: str) -> str:
+    """Публичный алиас с корректным именем для S3-хранилища."""
+    return await upload_image_to_minio(file=file, folder=folder)
+
+
+def build_public_url(object_name: str) -> str:
+    """Собирает публичный URL объекта по ключу."""
+    return _build_public_object_url(settings.S3_BUCKET_PUBLIC, object_name)
