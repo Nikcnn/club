@@ -37,10 +37,7 @@ authentication_backend = AdminAuth(secret_key=settings.SECRET_KEY)
 
 
 # ==========================================
-# 3. МОДЕЛИ (закомментировано пока не настроите)
-# ==========================================
-
-# 2. ИНИЦИАЛИЗАЦИЯ
+# 3. МОДЕЛИ
 # ==========================================
 def setup_admin(app: FastAPI, sync_engine):
     admin = Admin(
@@ -67,39 +64,69 @@ def setup_admin(app: FastAPI, sync_engine):
     class UserAdmin(BaseAdmin, model=User):
         name = "Пользователь"
         name_plural = "Пользователи"
+        can_create = False
         column_list = ["id", "email", "username", "role", "is_active", "created_at"]
         column_searchable_list = ["email", "username"]
         column_sortable_list = ["id", "created_at"]
-        form_excluded_columns = ["club_reviews", "org_reviews"]
+        form_excluded_columns = ["hashed_password", "club_reviews", "org_reviews", "created_at", "updated_at"]
 
     admin.add_view(UserAdmin)
 
     class ClubAdmin(BaseAdmin, model=Club):
         name = "Клуб"
         name_plural = "Клубы"
+        can_create = False
         column_list = ["id", "name", "category", "city", "website", "is_active", "created_at"]
         column_searchable_list = ["name", "city"]
         column_sortable_list = ["id", "created_at"]
-        form_excluded_columns = ["campaigns", "news", "competitions", "reviews", "rating"]
+        form_excluded_columns = [
+            "hashed_password",
+            "campaigns",
+            "news",
+            "competitions",
+            "reviews",
+            "rating",
+            "created_at",
+            "updated_at",
+        ]
 
     admin.add_view(ClubAdmin)
 
     class InvestorAdmin(BaseAdmin, model=Investor):
         name = "Инвестор"
         name_plural = "Инвесторы"
+        can_create = False
         column_list = ["id", "email", "username", "company_name", "linkedin_url", "is_active", "created_at"]
         column_searchable_list = ["email", "username", "company_name"]
         column_sortable_list = ["id", "created_at"]
-        form_excluded_columns = ["investments", "club_reviews", "org_reviews"]
+        form_excluded_columns = [
+            "hashed_password",
+            "investments",
+            "club_reviews",
+            "org_reviews",
+            "created_at",
+            "updated_at",
+        ]
+
     admin.add_view(InvestorAdmin)
 
     class OrganizationAdmin(BaseAdmin, model=Organization):
         name = "Организация"
         name_plural = "Организации"
+        can_create = False
         column_list = ["id", "name", "email", "city", "website", "is_active", "created_at"]
         column_searchable_list = ["name", "email", "city"]
         column_sortable_list = ["id", "created_at"]
-        form_excluded_columns = ["reviews", "rating", "org_reviews", "club_reviews"]
+        form_excluded_columns = [
+            "hashed_password",
+            "reviews",
+            "rating",
+            "org_reviews",
+            "club_reviews",
+            "created_at",
+            "updated_at",
+        ]
+
     admin.add_view(OrganizationAdmin)
 
     class CompetitionAdmin(BaseAdmin, model=Competition):
@@ -108,6 +135,9 @@ def setup_admin(app: FastAPI, sync_engine):
         column_list = ["id", "club_id", "title", "status", "starts_at", "ends_at", "created_at"]
         column_searchable_list = ["title"]
         column_sortable_list = ["id", "starts_at", "ends_at", "created_at"]
+        form_columns = ["club", "title", "description", "starts_at", "ends_at", "photo_key", "status"]
+        form_excluded_columns = ["created_at", "updated_at"]
+
     admin.add_view(CompetitionAdmin)
 
     class CampaignAdmin(BaseAdmin, model=Campaign):
@@ -116,7 +146,19 @@ def setup_admin(app: FastAPI, sync_engine):
         column_list = ["id", "club_id", "title", "goal_amount", "status", "starts_at", "ends_at", "created_at"]
         column_searchable_list = ["title"]
         column_sortable_list = ["id", "goal_amount", "starts_at", "ends_at", "created_at"]
-        form_excluded_columns = ["investments", "club"]
+        form_columns = [
+            "club",
+            "title",
+            "description",
+            "goal_amount",
+            "starts_at",
+            "ends_at",
+            "status",
+            "cover_key",
+            "gallery_keys",
+        ]
+        form_excluded_columns = ["investments", "created_at", "updated_at"]
+
     admin.add_view(CampaignAdmin)
 
     class InvestmentAdmin(BaseAdmin, model=Investment):
@@ -124,7 +166,9 @@ def setup_admin(app: FastAPI, sync_engine):
         name_plural = "Инвестиции"
         column_list = ["id", "campaign_id", "investor_id", "amount", "type", "status", "paid_at", "created_at"]
         column_sortable_list = ["id", "amount", "paid_at", "created_at"]
-        form_excluded_columns = ["campaign", "investor", "payment"]
+        form_columns = ["campaign", "investor", "amount", "type", "status", "paid_at"]
+        form_excluded_columns = ["payment", "created_at", "updated_at"]
+
     admin.add_view(InvestmentAdmin)
 
     class NewsAdmin(BaseAdmin, model=News):
@@ -133,7 +177,9 @@ def setup_admin(app: FastAPI, sync_engine):
         column_list = ["id", "club_id", "title", "is_published", "published_at", "created_at"]
         column_searchable_list = ["title", "body"]
         column_sortable_list = ["id", "published_at", "created_at"]
-        form_excluded_columns = ["club"]
+        form_columns = ["club", "title", "body", "cover_key", "published_at", "is_published"]
+        form_excluded_columns = ["created_at", "updated_at"]
+
     admin.add_view(NewsAdmin)
 
     class PaymentAdmin(BaseAdmin, model=Payment):
@@ -141,7 +187,20 @@ def setup_admin(app: FastAPI, sync_engine):
         name_plural = "Платежи"
         column_list = ["id", "investment_id", "provider", "amount", "status", "confirmed_at", "created_at"]
         column_sortable_list = ["id", "amount", "confirmed_at", "created_at"]
-        form_excluded_columns = ["investment", "transitions"]
+        form_columns = [
+            "investment",
+            "provider",
+            "provider_payment_id",
+            "checkout_url",
+            "amount",
+            "status",
+            "idempotency_key",
+            "last_event_at",
+            "version",
+            "confirmed_at",
+        ]
+        form_excluded_columns = ["transitions", "created_at", "updated_at"]
+
     admin.add_view(PaymentAdmin)
 
     class PaymentIdempotencyAdmin(BaseAdmin, model=PaymentIdempotency):
@@ -150,6 +209,8 @@ def setup_admin(app: FastAPI, sync_engine):
         column_list = ["id", "user_id", "scope", "idempotency_key", "payment_id", "response_code", "created_at"]
         column_searchable_list = ["idempotency_key", "scope"]
         column_sortable_list = ["id", "created_at"]
+        form_excluded_columns = ["created_at"]
+
     admin.add_view(PaymentIdempotencyAdmin)
 
     class WebhookEventAdmin(BaseAdmin, model=WebhookEvent):
@@ -158,7 +219,7 @@ def setup_admin(app: FastAPI, sync_engine):
         column_list = ["id", "provider", "provider_event_id", "event_type", "signature_valid", "status", "received_at"]
         column_searchable_list = ["provider", "provider_event_id", "event_type"]
         column_sortable_list = ["id", "received_at"]
-        form_excluded_columns = ["deliveries"]
+        form_excluded_columns = ["deliveries", "received_at"]
 
     admin.add_view(WebhookEventAdmin)
 
@@ -167,7 +228,8 @@ def setup_admin(app: FastAPI, sync_engine):
         name_plural = "Рейтинги клубов"
         column_list = ["id", "club_id", "avg_score", "review_count", "updated_at"]
         column_sortable_list = ["id", "avg_score", "review_count", "updated_at"]
-        form_excluded_columns = ["club"]
+        form_columns = ["club", "avg_score", "review_count"]
+        form_excluded_columns = ["created_at", "updated_at"]
 
     admin.add_view(ClubRatingAdmin)
 
@@ -176,7 +238,8 @@ def setup_admin(app: FastAPI, sync_engine):
         name_plural = "Рейтинги организаций"
         column_list = ["id", "organization_id", "avg_score", "review_count", "updated_at"]
         column_sortable_list = ["id", "avg_score", "review_count", "updated_at"]
-        form_excluded_columns = ["organization"]
+        form_columns = ["organization", "avg_score", "review_count"]
+        form_excluded_columns = ["created_at", "updated_at"]
 
     admin.add_view(OrganizationRatingAdmin)
 
@@ -185,7 +248,17 @@ def setup_admin(app: FastAPI, sync_engine):
         name_plural = "Отзывы о клубах"
         column_list = ["id", "club_id", "user_id", "score", "moderation_status", "is_approved", "created_at"]
         column_sortable_list = ["id", "score", "created_at"]
-        form_excluded_columns = ["club", "author"]
+        form_columns = [
+            "club",
+            "author",
+            "text",
+            "score",
+            "is_approved",
+            "moderation_status",
+            "toxicity_score",
+            "moderation_labels",
+        ]
+        form_excluded_columns = ["created_at", "updated_at"]
 
     admin.add_view(ClubReviewAdmin)
 
@@ -194,7 +267,17 @@ def setup_admin(app: FastAPI, sync_engine):
         name_plural = "Отзывы об организациях"
         column_list = ["id", "organization_id", "user_id", "score", "moderation_status", "is_approved", "created_at"]
         column_sortable_list = ["id", "score", "created_at"]
-        form_excluded_columns = ["organization", "author"]
+        form_columns = [
+            "organization",
+            "author",
+            "text",
+            "score",
+            "is_approved",
+            "moderation_status",
+            "toxicity_score",
+            "moderation_labels",
+        ]
+        form_excluded_columns = ["created_at", "updated_at"]
 
     admin.add_view(OrganizationReviewAdmin)
 
@@ -204,6 +287,7 @@ def setup_admin(app: FastAPI, sync_engine):
         column_list = ["id", "user_id", "query_text", "role", "created_at"]
         column_searchable_list = ["query_text", "role"]
         column_sortable_list = ["id", "created_at"]
+        form_excluded_columns = ["created_at"]
 
     admin.add_view(SearchEventAdmin)
 
@@ -213,6 +297,7 @@ def setup_admin(app: FastAPI, sync_engine):
         column_list = ["id", "user_id", "doc_id", "doc_type", "entity_id", "position", "created_at"]
         column_searchable_list = ["doc_id", "doc_type", "entity_id"]
         column_sortable_list = ["id", "position", "created_at"]
+        form_excluded_columns = ["created_at"]
 
     admin.add_view(ClickEventAdmin)
 
@@ -221,6 +306,7 @@ def setup_admin(app: FastAPI, sync_engine):
         name_plural = "Профили поиска пользователей"
         column_list = ["user_id", "top_cities", "top_categories", "top_types", "updated_at"]
         column_sortable_list = ["user_id", "updated_at"]
+        form_excluded_columns = ["updated_at"]
 
     admin.add_view(UserSearchProfileAdmin)
     return admin
