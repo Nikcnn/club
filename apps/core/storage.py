@@ -6,7 +6,11 @@ from fastapi import HTTPException, UploadFile
 
 from apps.core.settings import settings
 
+import logging
 
+
+
+logger = logging.getLogger("uvicorn.error")
 def _parse_minio_endpoint(endpoint_url: str | None) -> tuple[str, bool]:
     endpoint = (endpoint_url or "").strip()
     if not endpoint:
@@ -17,7 +21,7 @@ def _parse_minio_endpoint(endpoint_url: str | None) -> tuple[str, bool]:
         if not parsed.netloc:
             raise HTTPException(status_code=500, detail="S3_ENDPOINT_URL is invalid")
         return parsed.netloc, parsed.scheme == "https"
-
+    logger.info(endpoint.rstrip("/"))
     return endpoint.rstrip("/"), False
 
 
@@ -28,7 +32,7 @@ def _build_public_object_url(bucket: str, object_name: str) -> str:
 
     if not endpoint.startswith(("http://", "https://")):
         endpoint = f"http://{endpoint}"
-
+    logger.info(f"{endpoint}/{bucket}/{object_name}")
     return f"{endpoint}/{bucket}/{object_name}"
 
 
@@ -77,7 +81,7 @@ async def upload_image_to_minio(file: UploadFile, folder: str) -> str:
         length=len(raw),
         content_type=file.content_type,
     )
-
+    logger.info(object_name)
     return object_name
 
 
