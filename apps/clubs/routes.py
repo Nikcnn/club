@@ -13,7 +13,7 @@ import logging
 
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 router = APIRouter(prefix="/clubs", tags=["Clubs"])
 
 # TODO(search): при добавлении delete-эндпоинта клуба вызывать SearchService.delete_point("club", club_id) после commit.
