@@ -82,6 +82,7 @@ async def upload_my_logo(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    print(logo)
     """Загрузка логотипа клуба в MinIO с сохранением ключа в профиле."""
     if current_user.role != UserRole.CLUB:
         raise HTTPException(status_code=403, detail="Only clubs can upload logo")

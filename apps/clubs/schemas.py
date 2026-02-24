@@ -26,7 +26,6 @@ class ClubUpdate(BaseModel):
     description: Optional[str] = None
     website: Optional[str] = None
     social_links: Optional[Dict[str, str]] = None
-    logo_key: Optional[str] = None
     edu_org_id: Optional[int] = None
 
 
