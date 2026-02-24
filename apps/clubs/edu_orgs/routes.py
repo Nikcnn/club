@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.clubs.edu_orgs.schemas import (
@@ -9,6 +9,7 @@ from apps.clubs.edu_orgs.schemas import (
     EducationalOrganizationUpdate,
 )
 from apps.clubs.edu_orgs.services import EduOrgService
+from apps.core.storage import upload_image_to_minio
 from apps.db.dependencies import get_db
 
 router = APIRouter(prefix="/educational-organizations", tags=["Educational organizations"])
@@ -56,3 +57,20 @@ async def delete_educational_organization(edu_org_id: int, db: AsyncSession = De
     if not edu_org:
         raise HTTPException(status_code=404, detail="Educational organization not found")
     await EduOrgService.delete(db, edu_org)
+
+@router.post("/{edu_org_id}/logo", response_model=EducationalOrganizationResponse)
+async def upload_educational_organization_logo(
+    edu_org_id: int,
+    logo: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Загрузка логотипа образовательного учреждения в MinIO."""
+    edu_org = await EduOrgService.get_by_id(db, edu_org_id)
+    if not edu_org:
+        raise HTTPException(status_code=404, detail="Educational organization not found")
+
+    edu_org.logo_key = await upload_image_to_minio(logo, folder=f"educational-organizations/{edu_org_id}")
+    await db.commit()
+    await db.refresh(edu_org)
+    return edu_org
+
