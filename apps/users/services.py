@@ -25,7 +25,6 @@ class UserService:
         user = User(
             email=schema.email,
             hashed_password=get_password_hash(schema.password),
-            username=schema.username,
             role=UserRole.MEMBER,
             avatar_key=schema.avatar_key,
             is_active=True,

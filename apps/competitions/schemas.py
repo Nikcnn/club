@@ -1,7 +1,10 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from apps.competitions.models import CompetitionStatus
+
 
 class CompetitionBase(BaseModel):
     title: str = Field(..., max_length=200)
@@ -16,8 +19,10 @@ class CompetitionBase(BaseModel):
             raise ValueError("Дата окончания должна быть позже даты начала")
         return v
 
+
 class CompetitionCreate(CompetitionBase):
     pass
+
 
 class CompetitionUpdate(BaseModel):
     title: Optional[str] = None
@@ -26,6 +31,7 @@ class CompetitionUpdate(BaseModel):
     ends_at: Optional[datetime] = None
     status: Optional[CompetitionStatus] = None
 
+
 class CompetitionResponse(CompetitionBase):
     id: int
     club_id: int
@@ -33,5 +39,14 @@ class CompetitionResponse(CompetitionBase):
     status: CompetitionStatus
     created_at: datetime
     updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CompetitionSubscriptionResponse(BaseModel):
+    id: int
+    competition_id: int
+    user_id: int
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
