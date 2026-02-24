@@ -43,7 +43,9 @@ class CompetitionService:
         schema: CompetitionCreate,
         club_id: int
     ) -> Competition:
-        await CompetitionService.cleanup_expired_competitions(db)
+        now = datetime.now(timezone.utc)
+        if schema.ends_at <= now:
+            raise ValueError("Нельзя создать уже завершенное соревнование")
 
         comp = Competition(
             **schema.model_dump(),
@@ -79,7 +81,6 @@ class CompetitionService:
 
     @staticmethod
     async def get_by_id(db: AsyncSession, comp_id: int) -> Optional[Competition]:
-        await CompetitionService.cleanup_expired_competitions(db)
         query = select(Competition).where(Competition.id == comp_id)
         result = await db.execute(query)
         return result.scalar_one_or_none()
@@ -100,6 +101,8 @@ class CompetitionService:
 
         if new_ends_at <= new_starts_at:
             raise ValueError("Дата окончания должна быть позже даты начала")
+        if new_ends_at <= datetime.now(timezone.utc):
+            raise ValueError("Нельзя обновить соревнование в прошедшее время")
 
         subscription_users = await db.execute(
             select(CompetitionSubscription.user_id).where(CompetitionSubscription.competition_id == comp.id)
@@ -122,10 +125,13 @@ class CompetitionService:
 
     @staticmethod
     async def subscribe_user(db: AsyncSession, comp_id: int, user_id: int) -> CompetitionSubscription:
-        await CompetitionService.cleanup_expired_competitions(db)
         competition = await CompetitionService.get_by_id(db, comp_id)
         if not competition:
             raise ValueError("Соревнование не найдено")
+        if competition.ends_at <= datetime.now(timezone.utc):
+            await db.delete(competition)
+            await db.commit()
+            raise ValueError("Соревнование уже завершено")
 
         existing = await db.execute(
             select(CompetitionSubscription).where(

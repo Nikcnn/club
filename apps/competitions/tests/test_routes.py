@@ -87,3 +87,22 @@ async def test_subscribe_competition_overlap_error(monkeypatch):
 
     assert response.status_code == 400
     assert "пересекается" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_subscribe_competition_finished_error(monkeypatch):
+    app = FastAPI()
+    app.include_router(routes.router)
+    app.dependency_overrides[routes.get_current_user] = lambda: SimpleNamespace(id=5)
+
+    monkeypatch.setattr(
+        routes.CompetitionService,
+        "subscribe_user",
+        AsyncMock(side_effect=ValueError("Соревнование уже завершено")),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/competitions/11/subscribe")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Соревнование уже завершено"

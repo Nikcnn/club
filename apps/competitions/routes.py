@@ -28,7 +28,10 @@ async def create_competition(
     if current_user.role != UserRole.CLUB:
         raise HTTPException(status_code=403, detail="Только клубы могут создавать соревнования")
 
-    return await CompetitionService.create(db, schema, club_id=current_user.id)
+    try:
+        return await CompetitionService.create(db, schema, club_id=current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/", response_model=List[CompetitionResponse])

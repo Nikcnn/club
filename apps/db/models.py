@@ -17,6 +17,6 @@ from apps.competitions.models import Competition, CompetitionSubscription
 from apps.news.models import News
 from apps.reviews.models import ClubReview, OrganizationReview
 from apps.ratings.models import ClubRating, OrganizationRating
-
+from apps.clubs.edu_orgs.models import EducationalOrganization
 # 4. Search tracking
 from apps.search.models import SearchEvent, ClickEvent, UserSearchProfile
