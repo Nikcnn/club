@@ -1,6 +1,7 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from apps.core.storage import upload_image_to_minio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.db.dependencies import get_db
@@ -91,3 +92,24 @@ async def delete_news(
 
     await NewsService.delete(db, news_id)
     return None
+
+
+@router.post("/{news_id}/cover", response_model=NewsResponse)
+async def upload_news_cover(
+    news_id: int,
+    cover: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Загрузка обложки новости в MinIO."""
+    news = await NewsService.get_by_id(db, news_id)
+    if not news:
+        raise HTTPException(status_code=404, detail="Новость не найдена")
+
+    if news.club_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Вы не можете редактировать чужую новость")
+
+    news.cover_key = await upload_image_to_minio(cover, folder=f"news/{news_id}")
+    await db.commit()
+    await db.refresh(news)
+    return news
