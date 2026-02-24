@@ -21,12 +21,11 @@ def _parse_minio_endpoint(endpoint_url: str | None) -> tuple[str, bool]:
         if not parsed.netloc:
             raise HTTPException(status_code=500, detail="S3_ENDPOINT_URL is invalid")
         return parsed.netloc, parsed.scheme == "https"
-    logger.info(endpoint.rstrip("/"))
     return endpoint.rstrip("/"), False
 
 
 def _build_public_object_url(bucket: str, object_name: str) -> str:
-    endpoint = (settings.S3_PUBLIC_ENDPOINT_URL or settings.S3_ENDPOINT_S_URL or "").rstrip("/")
+    endpoint = settings.S3_ENDPOINT_S_URL.rstrip("/")
     if not endpoint:
         raise HTTPException(status_code=500, detail="S3 public endpoint is not configured")
 
