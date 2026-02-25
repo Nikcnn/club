@@ -41,7 +41,7 @@ async def tg_check(schema: TgCheckRequest, db: AsyncSession = Depends(get_db)):
     return TgCheckResponse(
         telegram_id=tg.telegram_id,
         is_blocked=tg.is_blocked,
-        is_linked=bool(tg.linked_candidate_id),
+        is_linked=bool(tg.linked_candidate_id or tg.linked_organization_id),
         available_roles=["candidate", "organization"],
     )
 

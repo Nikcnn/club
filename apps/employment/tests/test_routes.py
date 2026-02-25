@@ -15,7 +15,7 @@ from apps.users.models import UserRole
 async def test_tg_check_creates_or_updates(monkeypatch):
     app = FastAPI()
     app.include_router(routes.router)
-    monkeypatch.setattr(routes.EmploymentService, "tg_check", AsyncMock(return_value=SimpleNamespace(telegram_id="1", is_blocked=False, linked_candidate_id=1)))
+    monkeypatch.setattr(routes.EmploymentService, "tg_check", AsyncMock(return_value=SimpleNamespace(telegram_id="1", is_blocked=False, linked_organization_id=None, linked_candidate_id=1)))
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/employment/tg/check", json={"telegram_id": "1"})

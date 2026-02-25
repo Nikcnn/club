@@ -27,6 +27,7 @@ class TgInfo(Base, TimestampMixin):
     last_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    linked_organization_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
     linked_candidate_id: Mapped[Optional[int]] = mapped_column(ForeignKey("candidate_profiles.id", ondelete="SET NULL"), nullable=True)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 

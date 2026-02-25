@@ -67,6 +67,10 @@ class EmploymentService:
         )
         db.add(org)
         await db.flush()
+        if schema.telegram_id:
+            tg = (await db.execute(select(TgInfo).where(TgInfo.telegram_id == schema.telegram_id))).scalars().first()
+            if tg:
+                tg.linked_organization_id = org.id
         await db.commit()
         await db.refresh(org)
         return org
