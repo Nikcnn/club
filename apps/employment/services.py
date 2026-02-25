@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Any
@@ -270,7 +271,8 @@ class EmploymentService:
             match = await EmploymentService._find_match_for_reaction(db, existing_key)
             return existing_key, match, True
 
-        request_hash = sha256(schema.model_dump_json(sort_keys=True).encode("utf-8")).hexdigest()
+        canonical_payload = json.dumps(schema.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+        request_hash = sha256(canonical_payload.encode("utf-8")).hexdigest()
         reaction = EmploymentReaction(
             initiator_entity_type=schema.initiator_entity_type,
             initiator_entity_id=schema.initiator_entity_id,
