@@ -82,28 +82,49 @@ def _cred_exc():
         headers={"WWW-Authenticate": "Bearer"},
     )
 
+
+async def _get_active_tg_info(db: AsyncSession, tg_user_id: str) -> TgInfo:
+    tg = (await db.execute(select(TgInfo).where(TgInfo.telegram_id == tg_user_id))).scalars().first()
+    if not tg or not tg.is_active or tg.is_blocked:
+        raise _cred_exc()
+    return tg
+
+
+async def _get_linked_entity_by_tg(
+    db: AsyncSession,
+    tg_user_id: str,
+    *,
+    linked_id_attr: str,
+    model,
+):
+    tg = await _get_active_tg_info(db, tg_user_id)
+    linked_id = getattr(tg, linked_id_attr)
+    if not linked_id:
+        raise _cred_exc()
+
+    entity = (await db.execute(select(model).where(model.id == linked_id))).scalars().first()
+    if not entity or not entity.is_active:
+        raise _cred_exc()
+    return entity
+
 async def get_current_organization_tg(
     tg_user_id: str = Header(..., alias="X-Tg-User-Id"),
     db: AsyncSession = Depends(get_db),
 ) -> Organization:
-    tg = (await db.execute(select(TgInfo).where(TgInfo.telegram_id == tg_user_id))).scalars().first()
-    if not tg or not tg.is_active or tg.is_blocked or not tg.linked_organization_id:
-        raise _cred_exc()
-
-    org = (await db.execute(select(Organization).where(Organization.id == tg.linked_organization_id))).scalars().first()
-    if not org or not org.is_active:
-        raise _cred_exc()
-    return org
+    return await _get_linked_entity_by_tg(
+        db,
+        tg_user_id,
+        linked_id_attr="linked_organization_id",
+        model=Organization,
+    )
 
 async def get_current_candidate_tg(
     tg_user_id: str = Header(..., alias="X-Tg-User-Id"),
     db: AsyncSession = Depends(get_db),
 ) -> CandidateProfile:
-    tg = (await db.execute(select(TgInfo).where(TgInfo.telegram_id == tg_user_id))).scalars().first()
-    if not tg or not tg.is_active or tg.is_blocked or not tg.linked_candidate_id:
-        raise _cred_exc()
-
-    cand = (await db.execute(select(CandidateProfile).where(CandidateProfile.id == tg.linked_candidate_id))).scalars().first()
-    if not cand or not cand.is_active:
-        raise _cred_exc()
-    return cand
+    return await _get_linked_entity_by_tg(
+        db,
+        tg_user_id,
+        linked_id_attr="linked_candidate_id",
+        model=CandidateProfile,
+    )
