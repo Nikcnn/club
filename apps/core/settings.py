@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     TOXICITY_THRESHOLD_PENDING: float = 0.50
     TOXICITY_THRESHOLD_REJECT: float = 0.80
 
+    EMPLOYMENT_AI_ENABLED: bool = False
+    GEMINI_API_KEY: str | None = None
+    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_EMBEDDING_MODEL: str | None = None
+    EMPLOYMENT_QDRANT_COLLECTION: str = "employment_index"
+
     @property
     def OPENROUTER_MODEL_NAME(self) -> str:
         return self.OPENROUTER_MODERATION_MODEL or self.OPENROUTER_MODEL
