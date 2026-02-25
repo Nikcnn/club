@@ -9,6 +9,7 @@ import httpx
 
 from apps.core.settings import settings
 from apps.employment.enums import MatchConfidence
+from hashlib import sha512
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,8 @@ class EmploymentAIService:
     @staticmethod
     def vectorize(payload: dict[str, Any]) -> list[float]:
         # Fallback deterministic pseudo-embedding until provider-specific embeddings are wired.
-        digest = sha256(EmploymentAIService.normalize_text(payload).encode("utf-8")).digest()
-        return [b / 255 for b in digest[:64]]
-
+        digest = sha512(EmploymentAIService.normalize_text(payload).encode("utf-8")).digest()
+        return [b / 255 for b in digest]  # будет 64 значения
     @staticmethod
     def build_match_percent(match_score: float) -> int:
         return max(0, min(100, round(match_score * 100)))

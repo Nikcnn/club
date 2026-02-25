@@ -59,7 +59,6 @@ class OrganizationMeResponse(BaseModel):
 
 class CandidateRegisterRequest(BaseModel):
     email: Optional[EmailStr] = None
-    mail: Optional[EmailStr] = None
     description_json: dict[str, Any] = Field(default_factory=dict)
     links: list[str] = Field(default_factory=list)
     category: Optional[str] = None

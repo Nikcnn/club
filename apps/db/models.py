@@ -20,7 +20,7 @@ from apps.ratings.models import ClubRating, OrganizationRating
 from apps.clubs.edu_orgs.models import EducationalOrganization
 # 4. Search tracking
 from apps.search.models import SearchEvent, ClickEvent, UserSearchProfile
-
+from apps.employment.enums import *
 from apps.employment.models import (
     TgInfo, CandidateProfile, Vacancy, ClubMember, EmploymentReaction, EmploymentMatch, CandidateProfileHistory
 )

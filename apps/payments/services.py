@@ -37,7 +37,7 @@ class DomainTransitionError(ValueError):
 class PaymentService:
     @staticmethod
     def _hash_payload(payload: dict) -> str:
-        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
         return hashlib.sha256(encoded).hexdigest()
 
     @staticmethod

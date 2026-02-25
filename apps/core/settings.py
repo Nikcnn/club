@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     S3_ACCESS_KEY: str | None = None
     S3_SECRET_KEY: str | None = None
     S3_BUCKET_PUBLIC: str = "public"
-    S3_ENDPOINT_S_URL = 'http://2.132.157.33:9000'
+    S3_ENDPOINT_S_URL: str ='http://2.132.157.33:9000'
     S3_BUCKET_PRIVATE: str = "private"
 
     ADMIN_USER_MODEL: str = "User"
@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     EMPLOYMENT_AI_ENABLED: bool = False
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-3-flash"
     GEMINI_EMBEDDING_MODEL: str | None = None
     EMPLOYMENT_QDRANT_COLLECTION: str = "employment_index"
 
