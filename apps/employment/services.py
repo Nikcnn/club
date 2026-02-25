@@ -38,10 +38,23 @@ class EmploymentService:
         tg = (await db.execute(select(TgInfo).where(TgInfo.telegram_id == payload["telegram_id"]))).scalars().first()
         if not tg:
             tg = TgInfo(telegram_id=payload["telegram_id"])
+            # на всякий случай — если поля есть в модели
+            if getattr(tg, "is_active", None) is None:
+                tg.is_active = True
+            if getattr(tg, "is_blocked", None) is None:
+                tg.is_blocked = False
             db.add(tg)
+
         tg.telegram_username = payload.get("telegram_username")
         tg.first_name = payload.get("first_name")
         tg.last_name = payload.get("last_name")
+
+        # если запись уже была, а флаги пустые — нормализуем
+        if getattr(tg, "is_active", None) is None:
+            tg.is_active = True
+        if getattr(tg, "is_blocked", None) is None:
+            tg.is_blocked = False
+
         tg.last_seen_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(tg)
@@ -55,6 +68,7 @@ class EmploymentService:
     async def register_organization(db: AsyncSession, schema: EmploymentOrganizationRegisterRequest) -> Organization:
         if await UserService.get_by_email(db, schema.email):
             raise HTTPException(status_code=400, detail="Email already registered")
+
         org = Organization(
             email=schema.email,
             hashed_password=get_password_hash(schema.password),
@@ -66,20 +80,47 @@ class EmploymentService:
             website=schema.website,
         )
         db.add(org)
-        await db.flush()
+        await db.flush()  # чтобы получить org.id до commit
+
         if schema.telegram_id:
             tg = (await db.execute(select(TgInfo).where(TgInfo.telegram_id == schema.telegram_id))).scalars().first()
-            if tg:
-                tg.linked_organization_id = org.id
+
+            # ✅ если TgInfo ещё нет — создаём (раньше тут была главная проблема)
+            if not tg:
+                tg = TgInfo(telegram_id=schema.telegram_id)
+                # дефолты
+                if getattr(tg, "is_active", None) is None:
+                    tg.is_active = True
+                if getattr(tg, "is_blocked", None) is None:
+                    tg.is_blocked = False
+                db.add(tg)
+                await db.flush()
+
+            # ✅ защита от “двойной привязки”
+            if getattr(tg, "linked_candidate_id", None):
+                raise HTTPException(status_code=400, detail="Telegram already linked to a candidate")
+            if getattr(tg, "linked_organization_id", None) and tg.linked_organization_id != org.id:
+                raise HTTPException(status_code=400, detail="Telegram already linked to another organization")
+
+            tg.linked_organization_id = org.id
+            # если флаги пустые — нормализуем
+            if getattr(tg, "is_active", None) is None:
+                tg.is_active = True
+            if getattr(tg, "is_blocked", None) is None:
+                tg.is_blocked = False
+            tg.last_seen_at = datetime.now(timezone.utc)
+
         await db.commit()
         await db.refresh(org)
         return org
+
 
     @staticmethod
     async def register_candidate(db: AsyncSession, schema: CandidateRegisterRequest) -> CandidateProfile:
         existing = (await db.execute(select(CandidateProfile).where(CandidateProfile.email == schema.email))).scalars().first()
         if existing:
             raise HTTPException(status_code=400, detail="Candidate with this email already exists")
+
         candidate = CandidateProfile(
             email=str(schema.email),
             description_json=schema.description_json,
@@ -90,15 +131,39 @@ class EmploymentService:
         )
         db.add(candidate)
         await db.flush()
+
         await EmploymentService._create_history(db, candidate, ProfileChangeSource.WEB)
+
         if schema.telegram_id:
             tg = (await db.execute(select(TgInfo).where(TgInfo.telegram_id == schema.telegram_id))).scalars().first()
-            if tg:
-                tg.linked_candidate_id = candidate.id
+
+            # ✅ если TgInfo ещё нет — создаём
+            if not tg:
+                tg = TgInfo(telegram_id=schema.telegram_id)
+                if getattr(tg, "is_active", None) is None:
+                    tg.is_active = True
+                if getattr(tg, "is_blocked", None) is None:
+                    tg.is_blocked = False
+                db.add(tg)
+                await db.flush()
+
+            if getattr(tg, "linked_organization_id", None):
+                raise HTTPException(status_code=400, detail="Telegram already linked to an organization")
+            if getattr(tg, "linked_candidate_id", None) and tg.linked_candidate_id != candidate.id:
+                raise HTTPException(status_code=400, detail="Telegram already linked to another candidate")
+
+            tg.linked_candidate_id = candidate.id
+            if getattr(tg, "is_active", None) is None:
+                tg.is_active = True
+            if getattr(tg, "is_blocked", None) is None:
+                tg.is_blocked = False
+            tg.last_seen_at = datetime.now(timezone.utc)
+
         await db.commit()
         await db.refresh(candidate)
         await upsert_candidate_vector(candidate.id, EmploymentService._candidate_payload(candidate))
         return candidate
+
 
     @staticmethod
     async def update_candidate(db: AsyncSession, candidate_id: int, schema: CandidateUpdateRequest, source: ProfileChangeSource) -> CandidateProfile:

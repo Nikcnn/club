@@ -53,7 +53,7 @@ async def test_candidate_register_duplicate_email(monkeypatch):
 async def test_vacancy_crud_basic_path(monkeypatch):
     app = FastAPI()
     app.include_router(routes.router)
-    app.dependency_overrides[routes.get_current_user] = lambda: SimpleNamespace(id=77, role=UserRole.ORGANIZATION)
+    app.dependency_overrides[routes.get_current_organization_tg] = lambda: SimpleNamespace(id=77, role=UserRole.ORGANIZATION)
     monkeypatch.setattr(routes.EmploymentService, "create_vacancy", AsyncMock(return_value=SimpleNamespace(id=1, organization_id=77, position_title="Backend", description_json={}, status=VacancyStatus.DRAFT, city=None, employment_type=None, is_remote=False)))
     monkeypatch.setattr(routes.EmploymentService, "update_vacancy_status", AsyncMock(return_value=SimpleNamespace(id=1, organization_id=77, position_title="Backend", description_json={}, status=VacancyStatus.ACTIVE, city=None, employment_type=None, is_remote=False)))
 
@@ -121,27 +121,7 @@ async def test_mutual_match_creation_flow(monkeypatch):
 async def test_candidate_profile_update_creates_history_version(monkeypatch):
     app = FastAPI()
     app.include_router(routes.router)
-    user = SimpleNamespace(id=2, email="c@example.com", role=UserRole.MEMBER)
-    app.dependency_overrides[routes.get_current_user] = lambda: user
-
-    class _Result:
-        def __init__(self, value):
-            self._value = value
-
-        def scalars(self):
-            return self
-
-        def first(self):
-            return self._value
-
-    class DummySession:
-        async def execute(self, *_args, **_kwargs):
-            return _Result(SimpleNamespace(id=9, email="c@example.com"))
-
-    async def _fake_db():
-        yield DummySession()
-
-    app.dependency_overrides[routes.get_db] = _fake_db
+    app.dependency_overrides[routes.get_current_candidate_tg] = lambda: SimpleNamespace(id=9, email="c@example.com")
     monkeypatch.setattr(routes.EmploymentService, "update_candidate", AsyncMock(return_value=SimpleNamespace(id=9, email="c@example.com", description_json={}, links=[], category=None, city=None, resume_text=None, is_active=True)))
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -154,27 +134,7 @@ async def test_candidate_profile_update_creates_history_version(monkeypatch):
 async def test_recommendations_sorted(monkeypatch):
     app = FastAPI()
     app.include_router(routes.router)
-    user = SimpleNamespace(id=2, email="c@example.com", role=UserRole.MEMBER)
-    app.dependency_overrides[routes.get_current_user] = lambda: user
-
-    class _Result:
-        def __init__(self, value):
-            self._value = value
-
-        def scalars(self):
-            return self
-
-        def first(self):
-            return self._value
-
-    class DummySession:
-        async def execute(self, *_args, **_kwargs):
-            return _Result(SimpleNamespace(id=9, email="c@example.com", description_json={}))
-
-    async def _fake_db():
-        yield DummySession()
-
-    app.dependency_overrides[routes.get_db] = _fake_db
+    app.dependency_overrides[routes.get_current_candidate_tg] = lambda: SimpleNamespace(id=9, email="c@example.com", description_json={})
 
     monkeypatch.setattr(
         routes.EmploymentService,

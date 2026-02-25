@@ -30,8 +30,7 @@ from apps.employment.schemas import (
     VacancyStatusUpdateRequest,
 )
 from apps.employment.services import EmploymentService
-from apps.users.dependencies import get_current_user
-from apps.users.models import User, UserRole
+from apps.users.models import User
 
 router = APIRouter(prefix="/employment", tags=["Employment"])
 
@@ -60,11 +59,9 @@ async def register_org(schema: EmploymentOrganizationRegisterRequest, db: AsyncS
 
 
 @router.get("/organizations/me", response_model=OrganizationMeResponse)
-async def organization_me(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_organization_tg)):
-    if current_user.role != UserRole.ORGANIZATION:
-        raise HTTPException(status_code=403, detail="Only organizations allowed")
-    vacancies = list((await db.execute(select(Vacancy).where(Vacancy.organization_id == current_user.id))).scalars().all())
-    return OrganizationMeResponse(id=current_user.id, email=current_user.email, name=current_user.name, city=current_user.city, vacancies=vacancies)
+async def organization_me(db: AsyncSession = Depends(get_db), current_organization: User = Depends(get_current_organization_tg)):
+    vacancies = list((await db.execute(select(Vacancy).where(Vacancy.organization_id == current_organization.id))).scalars().all())
+    return OrganizationMeResponse(id=current_organization.id, email=current_organization.email, name=current_organization.name, city=current_organization.city, vacancies=vacancies)
 
 
 @router.post("/candidates/register", response_model=CandidateResponse, status_code=status.HTTP_201_CREATED)
@@ -73,35 +70,23 @@ async def register_candidate(schema: CandidateRegisterRequest, db: AsyncSession 
 
 
 @router.get("/candidates/me", response_model=CandidateResponse)
-async def candidate_me(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_candidate_tg)):
-    candidate = (await db.execute(select(CandidateProfile).where(CandidateProfile.email == current_user.email))).scalars().first()
-    if not candidate:
-        raise HTTPException(status_code=404, detail="Candidate profile not found")
-    return candidate
+async def candidate_me(current_candidate: CandidateProfile = Depends(get_current_candidate_tg)):
+    return current_candidate
 
 
 @router.patch("/candidates/me", response_model=CandidateResponse)
-async def candidate_update(schema: CandidateUpdateRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_candidate_tg)):
-    candidate = (await db.execute(select(CandidateProfile).where(CandidateProfile.email == current_user.email))).scalars().first()
-    if not candidate:
-        raise HTTPException(status_code=404, detail="Candidate profile not found")
-    return await EmploymentService.update_candidate(db, candidate.id, schema, ProfileChangeSource.WEB)
+async def candidate_update(schema: CandidateUpdateRequest, db: AsyncSession = Depends(get_db), current_candidate: CandidateProfile = Depends(get_current_candidate_tg)):
+    return await EmploymentService.update_candidate(db, current_candidate.id, schema, ProfileChangeSource.WEB)
 
 
 @router.get("/candidates/me/history", response_model=list[CandidateHistoryResponse])
-async def candidate_history(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_candidate_tg)):
-    candidate = (await db.execute(select(CandidateProfile).where(CandidateProfile.email == current_user.email))).scalars().first()
-    if not candidate:
-        raise HTTPException(status_code=404, detail="Candidate profile not found")
-    return await EmploymentService.get_candidate_history(db, candidate.id)
+async def candidate_history(db: AsyncSession = Depends(get_db), current_candidate: CandidateProfile = Depends(get_current_candidate_tg)):
+    return await EmploymentService.get_candidate_history(db, current_candidate.id)
 
 
 @router.get("/candidates/me/history/{version_no}", response_model=CandidateHistoryResponse)
-async def candidate_history_version(version_no: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_candidate_tg)):
-    candidate = (await db.execute(select(CandidateProfile).where(CandidateProfile.email == current_user.email))).scalars().first()
-    if not candidate:
-        raise HTTPException(status_code=404, detail="Candidate profile not found")
-    items = await EmploymentService.get_candidate_history(db, candidate.id)
+async def candidate_history_version(version_no: int, db: AsyncSession = Depends(get_db), current_candidate: CandidateProfile = Depends(get_current_candidate_tg)):
+    items = await EmploymentService.get_candidate_history(db, current_candidate.id)
     for item in items:
         if item.version_no == version_no:
             return item
@@ -109,17 +94,13 @@ async def candidate_history_version(version_no: int, db: AsyncSession = Depends(
 
 
 @router.post("/vacancies", response_model=VacancyResponse, status_code=status.HTTP_201_CREATED)
-async def create_vacancy(schema: VacancyCreateRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_organization_tg)):
-    if current_user.role != UserRole.ORGANIZATION:
-        raise HTTPException(status_code=403, detail="Only organizations allowed")
-    return await EmploymentService.create_vacancy(db, current_user.id, schema)
+async def create_vacancy(schema: VacancyCreateRequest, db: AsyncSession = Depends(get_db), current_organization: User = Depends(get_current_organization_tg)):
+    return await EmploymentService.create_vacancy(db, current_organization.id, schema)
 
 
 @router.get("/vacancies/my", response_model=list[VacancyResponse])
-async def my_vacancies(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_organization_tg)):
-    if current_user.role != UserRole.ORGANIZATION:
-        raise HTTPException(status_code=403, detail="Only organizations allowed")
-    return list((await db.execute(select(Vacancy).where(Vacancy.organization_id == current_user.id))).scalars().all())
+async def my_vacancies(db: AsyncSession = Depends(get_db), current_organization: User = Depends(get_current_organization_tg)):
+    return list((await db.execute(select(Vacancy).where(Vacancy.organization_id == current_organization.id))).scalars().all())
 
 
 @router.get("/vacancies/{vacancy_id}", response_model=VacancyResponse)
@@ -131,32 +112,23 @@ async def get_vacancy(vacancy_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.patch("/vacancies/{vacancy_id}", response_model=VacancyResponse)
-async def patch_vacancy(vacancy_id: int, schema: VacancyUpdateRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_organization_tg)):
-    if current_user.role != UserRole.ORGANIZATION:
-        raise HTTPException(status_code=403, detail="Only organizations allowed")
-    return await EmploymentService.update_vacancy(db, vacancy_id, current_user.id, schema)
+async def patch_vacancy(vacancy_id: int, schema: VacancyUpdateRequest, db: AsyncSession = Depends(get_db), current_organization: User = Depends(get_current_organization_tg)):
+    return await EmploymentService.update_vacancy(db, vacancy_id, current_organization.id, schema)
 
 
 @router.patch("/vacancies/{vacancy_id}/status", response_model=VacancyResponse)
-async def patch_vacancy_status(vacancy_id: int, schema: VacancyStatusUpdateRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_organization_tg)):
-    if current_user.role != UserRole.ORGANIZATION:
-        raise HTTPException(status_code=403, detail="Only organizations allowed")
-    return await EmploymentService.update_vacancy_status(db, vacancy_id, current_user.id, schema.status)
+async def patch_vacancy_status(vacancy_id: int, schema: VacancyStatusUpdateRequest, db: AsyncSession = Depends(get_db), current_organization: User = Depends(get_current_organization_tg)):
+    return await EmploymentService.update_vacancy_status(db, vacancy_id, current_organization.id, schema.status)
 
 
 @router.get("/recommendations/vacancies-for-candidate", response_model=list[RecommendationItem])
-async def rec_vacancies(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_candidate_tg)):
-    candidate = (await db.execute(select(CandidateProfile).where(CandidateProfile.email == current_user.email))).scalars().first()
-    if not candidate:
-        raise HTTPException(status_code=404, detail="Candidate profile not found")
-    return await EmploymentService.candidate_recommendations(db, candidate)
+async def rec_vacancies(db: AsyncSession = Depends(get_db), current_candidate: CandidateProfile = Depends(get_current_candidate_tg)):
+    return await EmploymentService.candidate_recommendations(db, current_candidate)
 
 
 @router.get("/vacancies/{vacancy_id}/recommended-candidates", response_model=list[RecommendationItem])
-async def rec_candidates(vacancy_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_organization_tg)):
-    if current_user.role != UserRole.ORGANIZATION:
-        raise HTTPException(status_code=403, detail="Only organizations allowed")
-    vacancy = await EmploymentService.get_vacancy_for_org(db, vacancy_id, current_user.id)
+async def rec_candidates(vacancy_id: int, db: AsyncSession = Depends(get_db), current_organization: User = Depends(get_current_organization_tg)):
+    vacancy = await EmploymentService.get_vacancy_for_org(db, vacancy_id, current_organization.id)
     return await EmploymentService.vacancy_recommendations(db, vacancy)
 
 
