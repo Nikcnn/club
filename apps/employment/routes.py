@@ -27,7 +27,7 @@ from apps.employment.schemas import (
     VacancyCreateRequest,
     VacancyResponse,
     VacancyUpdateRequest,
-    VacancyStatusUpdateRequest,
+    VacancyStatusUpdateRequest, TgMatchContextRequest,
 )
 from apps.employment.services import EmploymentService
 from apps.users.models import User
@@ -153,6 +153,9 @@ async def reactions(
         idempotent_replay=replay,
     )
 
+@router.post("/matches/by-context", response_model=MatchResponse)
+async def get_match_by_context(schema: TgMatchContextRequest, db: AsyncSession = Depends(get_db)):
+    return await EmploymentService.get_match_by_tg_context(db, schema.role, schema.tg_user_id, schema.vacancy_id)
 
 @router.get("/matches", response_model=list[MatchResponse])
 async def list_matches(

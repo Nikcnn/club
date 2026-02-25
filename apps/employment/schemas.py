@@ -56,6 +56,10 @@ class OrganizationMeResponse(BaseModel):
     city: str
     vacancies: list[VacancyShort]
 
+class TgMatchContextRequest(BaseModel):
+    role: EntityType
+    tg_user_id: str
+    vacancy_id: int
 
 class CandidateRegisterRequest(BaseModel):
     email: Optional[EmailStr] = None

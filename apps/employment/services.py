@@ -18,6 +18,7 @@ from apps.employment.qdrant import (
     upsert_candidate_vector,
     upsert_vacancy_vector,
 )
+from sqlalchemy.exc import IntegrityError
 from apps.employment.schemas import (
     CandidateRegisterRequest,
     CandidateUpdateRequest,
@@ -286,8 +287,31 @@ class EmploymentService:
             processed_at=datetime.now(timezone.utc),
         )
         db.add(reaction)
-        await db.flush()
+        try:
+            await db.flush()
+        except IntegrityError as exc:
+            await db.rollback()
+            if not EmploymentService._is_duplicate_reaction_target(exc):
+                raise
 
+            existing_target = (
+                await db.execute(
+                    select(EmploymentReaction).where(
+                        and_(
+                            EmploymentReaction.initiator_entity_type == schema.initiator_entity_type,
+                            EmploymentReaction.initiator_entity_id == schema.initiator_entity_id,
+                            EmploymentReaction.target_entity_type == schema.target_entity_type,
+                            EmploymentReaction.target_entity_id == schema.target_entity_id,
+                            EmploymentReaction.vacancy_id == schema.vacancy_id,
+                        )
+                    )
+                )
+            ).scalars().first()
+            if not existing_target:
+                raise
+
+            match = await EmploymentService._find_match_for_reaction(db, existing_target)
+            return existing_target, match, True
         match = None
         if schema.action == ReactionAction.LIKE:
             reverse = (
@@ -336,6 +360,41 @@ class EmploymentService:
         if match:
             await db.refresh(match)
         return reaction, match, False
+    @staticmethod
+    def _is_duplicate_reaction_target(exc: IntegrityError) -> bool:
+        return "uq_employment_reaction_target" in str(getattr(exc, "orig", exc))
+
+    @staticmethod
+    async def get_match_by_tg_context(db: AsyncSession, role: EntityType, tg_user_id: str,
+                                      vacancy_id: int) -> EmploymentMatch:
+        tg = (await db.execute(select(TgInfo).where(TgInfo.telegram_id == tg_user_id))).scalars().first()
+        if not tg:
+            raise HTTPException(status_code=404, detail="Telegram profile not found")
+
+        if role == EntityType.CANDIDATE:
+            if not tg.linked_candidate_id:
+                raise HTTPException(status_code=404, detail="Telegram is not linked to candidate")
+            q = select(EmploymentMatch).where(
+                and_(
+                    EmploymentMatch.candidate_id == tg.linked_candidate_id,
+                    EmploymentMatch.vacancy_id == vacancy_id,
+                )
+            )
+            match = (await db.execute(q.order_by(EmploymentMatch.updated_at.desc()))).scalars().first()
+        else:
+            if not tg.linked_organization_id:
+                raise HTTPException(status_code=404, detail="Telegram is not linked to organization")
+            q = select(EmploymentMatch).where(
+                and_(
+                    EmploymentMatch.organization_id == tg.linked_organization_id,
+                    EmploymentMatch.vacancy_id == vacancy_id,
+                )
+            )
+            match = (await db.execute(q.order_by(EmploymentMatch.updated_at.desc()))).scalars().first()
+
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found for provided context")
+        return match
 
     @staticmethod
     async def _find_match_for_reaction(db: AsyncSession, reaction: EmploymentReaction) -> EmploymentMatch | None:
