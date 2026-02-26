@@ -159,16 +159,11 @@ class RecommendationItem(BaseModel):
     confidence: MatchConfidence
     explanation: dict[str, Any]
 
-
 class ReactionRequest(BaseModel):
-    initiator_entity_type: EntityType
-    initiator_entity_id: int
-    target_entity_type: EntityType
-    target_entity_id: int
-    vacancy_id: Optional[int] = None
-    action: ReactionAction
-    source: ReactionSource = ReactionSource.WEB
-
+    role: EntityType          # candidate / organization
+    telegram_id: str          # строкой
+    vacancy_id: int           # контекст вакансии
+    action: ReactionAction    # like / dislike
 
 class ReactionResponse(BaseModel):
     reaction_id: int
