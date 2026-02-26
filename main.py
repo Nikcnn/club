@@ -50,12 +50,13 @@ app = FastAPI(
 # В продакшене лучше указать конкретные домены вместо ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=[
+        "https://clubit.netlify.app"
+    ],
+    allow_credentials=True,  # если используешь cookie/Authorization и т.п.
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # Инициализация админ-панели (/admin)
 # setup_admin(app)
 
