@@ -13,10 +13,14 @@ from apps.funding.models import Campaign, Investment
 from apps.payments.models import Payment
 
 # 3. Features
-from apps.competitions.models import Competition
+from apps.competitions.models import Competition, CompetitionSubscription
 from apps.news.models import News
 from apps.reviews.models import ClubReview, OrganizationReview
 from apps.ratings.models import ClubRating, OrganizationRating
-
+from apps.clubs.edu_orgs.models import EducationalOrganization
 # 4. Search tracking
 from apps.search.models import SearchEvent, ClickEvent, UserSearchProfile
+from apps.employment.enums import *
+from apps.employment.models import (
+    TgInfo, CandidateProfile, Vacancy, ClubMember, EmploymentReaction, EmploymentMatch, CandidateProfileHistory
+)

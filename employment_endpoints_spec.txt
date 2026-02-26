@@ -1,0 +1,1229 @@
+Ниже — готовый **подробный текстовый документ по эндпоинтам** для нового функционала Employment / Jobs
+(поиск работы и работников через Telegram-бот в стиле “Дайвинчик”), с учетом:
+- вашего ТЗ;
+- замечаний по слабым местам API/бизнес-логики;
+- текущей архитектуры проекта (FastAPI modular monolith, service-layer, search/Qdrant, tracking).
+
+---
+
+# Подробное описание эндпоинтов нового функционала Employment / Jobs
+
+## 1. Общая идея нового API-контура
+
+В существующий проект добавляется отдельный функциональный контур **Employment / Jobs**, который позволяет:
+
+- **соискателям** (Employ) искать вакансии;
+- **работодателям** (Organization / HR) искать кандидатов;
+- работать через **Telegram-бот** (свайпы / лайки / дизлайки / матчи);
+- использовать **AI-подбор** (эмбеддинги + Qdrant + генерация объяснения);
+- строить **аналитику** по навыкам и готовности студентов.
+
+### Почему это должен быть отдельный контур
+Текущий проект уже содержит:
+- модульные роуты (users/clubs/organizations/search/...),
+- service-layer логику,
+- Qdrant-поиск и tracking событий.
+
+Чтобы не ломать текущий поиск и не смешивать домены (clubs/news/campaigns vs вакансии/резюме), новый функционал лучше оформить как отдельный модуль:
+- `apps/employment/routes.py`
+- `apps/employment/services.py`
+- `apps/employment/schemas.py`
+
+---
+
+## 2. Ключевые принципы проектирования эндпоинтов (важно)
+
+## 2.1. Не делать “универсальный endpoint” для всего AI-подбора
+Нельзя смешивать в один endpoint два разных сценария:
+
+1) **Соискателю** → подходящие вакансии  
+2) **Работодателю** → подходящие кандидаты под конкретную вакансию
+
+У них разные:
+- права доступа,
+- фильтры,
+- payload,
+- контекст,
+- объяснения AI.
+
+**Решение:** отдельные endpoint’ы под каждый сценарий.
+
+---
+
+## 2.2. Обязательная идемпотентность для лайков/дизлайков
+Telegram-бот может:
+- отправить дубль webhook-запроса,
+- ретраить запросы,
+- пользователь может нажать кнопку повторно.
+
+Если не будет идемпотентности — получите:
+- дубли лайков/дизлайков,
+- двойные уведомления на email,
+- двойные матчи,
+- гонки при обновлении статусов.
+
+**Решение:** для реакций использовать `Idempotency-Key` (по аналогии с payments).
+
+---
+
+## 2.3. Не удалять match-записи после матча
+Удаление “матча/ожидания” после взаимного лайка ломает:
+- аудит,
+- аналитику,
+- антиспам,
+- разбор багов,
+- обучение ранжирования на действиях.
+
+**Решение:** не удалять, а переводить в статусы:
+- `pending_response`
+- `mutual_matched`
+- `notified`
+- `closed`
+- `expired`
+- `archived`
+
+---
+
+## 3. Роли и актеры в новом API
+
+## 3.1. Основные роли
+- `employ` — соискатель (отдельная сущность, без полиморфизма)
+- `organization` — работодатель (использует существующую модель Organization, полиморфизм уже есть)
+- `hr` — представитель работодателя (может быть ролью организации / отдельным доступом позже)
+- `admin` — администратор
+
+## 3.2. Каналы доступа
+1. **Telegram Bot API client** (бот дергает backend)
+2. **Web/mobile frontend** (личный кабинет / анкета / аналитика)
+3. **Internal service calls** (AI-пайплайн, уведомления, индексирование)
+
+---
+
+## 4. Предлагаемые сущности (минимум для endpoint’ов)
+
+Ниже — сущности, которые нужны именно для работы API и бизнес-логики.
+
+### 4.1. `tg_info`
+Связка пользователя/анкеты с Telegram.
+
+Пример полей:
+- `id`
+- `telegram_id` (unique)
+- `telegram_username`
+- `first_name`
+- `last_name`
+- `is_active`
+- `is_blocked`
+- `linked_user_id` (nullable, если связан с users для organization)
+- `linked_employ_id` (nullable, если связан с employ)
+- `created_at`, `updated_at`, `last_seen_at`
+
+---
+
+### 4.2. `employ`
+Профиль соискателя.
+
+Поля (из вашего ТЗ + рекомендованные):
+- `id`
+- `email` (**обязательное**, unique)
+- `mail` (если хотите отдельно хранить display mail, но лучше унифицировать как `email`)
+- `description` (JSON от фронта/бота)
+- `links` (ARRAY / JSON array)
+- `category`
+- `city`
+- `is_active`
+- `created_at`, `updated_at`
+
+> Рекомендация: вместо двух полей `mail` и `email` оставить одно каноническое `email`, чтобы не плодить путаницу.
+
+---
+
+### 4.3. `vacancies`
+Вакансии работодателя.
+
+Поля:
+- `id`
+- `organization_id` (FK -> organizations.id)
+- `role_search` (название вакансии)
+- `description` (JSON)
+- `status` (`draft`, `active`, `paused`, `closed`, `archived`)
+- `created_at`, `updated_at`
+
+---
+
+### 4.4. `club_members`
+Связь пользователей с клубами (если нужна для расширения экосистемы/студентов)
+
+Поля:
+- `id`
+- `club_id`
+- `user_id` или `employ_id` (зависит от модели)
+- `role_in_club` (optional)
+- `created_at`
+
+---
+
+### 4.5. `employment_reactions` (история лайков/дизлайков)
+История действий (не удаляется).
+
+Поля:
+- `id`
+- `initiator_role` (`employ`, `organization`)
+- `initiator_id`
+- `abonent_role` (`employ`, `organization`)
+- `abonent_id`
+- `vacancy_id` (nullable, но для работодателя под конкретную вакансию — обязателен)
+- `action` (`like`, `dislike`)
+- `source` (`telegram_bot`, `web`)
+- `idempotency_key`
+- `created_at`
+- `processed_at`
+
+Уникальность (пример):
+- UNIQUE(`initiator_role`, `initiator_id`, `abonent_role`, `abonent_id`, `vacancy_id`)
+  или
+- с versioning, если хотите хранить переоценки/повторные действия отдельно.
+
+---
+
+### 4.6. `employment_matches`
+Сущность взаимного матча.
+
+Поля:
+- `id`
+- `initiator_role`, `initiator_id`
+- `abonent_role`, `abonent_id`
+- `vacancy_id` (для кейса “кандидат под вакансию”)
+- `status` (`pending_response`, `mutual_matched`, `notified`, `closed`, `archived`, `expired`)
+- `matched_at`
+- `notified_at`
+- `closed_at`
+- `created_at`, `updated_at`
+
+---
+
+### 4.7. `employ_profile_history` (история резюме/анкеты)
+Для истории изменений резюме.
+
+Поля:
+- `id`
+- `employ_id`
+- `version_no`
+- `snapshot_json`
+- `change_source` (`telegram_bot`, `web`, `system`)
+- `created_at`
+
+---
+
+### 4.8. `ai_match_scores` и `ai_match_explanations` (рекомендовано)
+Чтобы не считать все каждый раз и иметь аудит AI.
+
+**`ai_match_scores`**
+- `id`
+- `vacancy_id`
+- `employ_id`
+- `match_score` (0..1)
+- `match_percent_display` (0..100)
+- `confidence`
+- `model_version`
+- `computed_at`
+
+**`ai_match_explanations`**
+- `id`
+- `score_id`
+- `explanation_json`
+- `computed_at`
+
+---
+
+## 5. Общие правила API для нового контура
+
+## 5.1. Базовый префикс
+Рекомендуемый префикс:
+- `/employment`
+
+Внутри — подгруппы:
+- `/employment/tg/*`
+- `/employment/employ/*`
+- `/employment/organizations/*`
+- `/employment/vacancies/*`
+- `/employment/recommendations/*`
+- `/employment/reactions/*`
+- `/employment/matches/*`
+- `/employment/analytics/*`
+
+---
+
+## 5.2. Авторизация
+### Вариант (практичный для MVP)
+- Бот использует сервисный токен (`X-Bot-Token` или `Authorization: Bearer <bot-service-token>`)
+- Web-клиент использует обычный JWT пользователя
+- Для organization сохраняется текущая auth-модель проекта (через `users` + role)
+
+---
+
+## 5.3. Формат ошибок
+Единый формат:
+```json
+{
+  "detail": {
+    "code": "EMAIL_ALREADY_EXISTS",
+    "message": "Organization with this email already exists",
+    "meta": {
+      "email": "hr@example.com"
+    }
+  }
+}
+```
+
+---
+
+## 5.4. Идемпотентность (обязательно для реакций)
+Для endpoint’ов действий (особенно лайк/дизлайк):
+- Header: `Idempotency-Key: <uuid>`
+- Сервер хранит request hash и результат
+- Повторный запрос с тем же ключом возвращает тот же ответ
+
+---
+
+## 5.5. Версионирование (желательно)
+Если планируется активная эволюция:
+- `/api/v1/employment/...`
+
+---
+
+# 6. Подробная карта endpoint’ов (MVP + расширение)
+
+---
+
+## 6.1. Telegram onboarding / проверка пользователя
+
+### 6.1.1. Проверка telegram_id (первый endpoint при /start)
+**POST** `/employment/tg/check`
+
+### Назначение
+Бот перед любым действием проверяет:
+- есть ли запись в `tg_info`,
+- привязан ли пользователь к анкете (`employ`) или организации (`user/organization`),
+- разрешен ли доступ.
+
+### Request
+```json
+{
+  "telegram_id": 123456789,
+  "telegram_username": "nikcnn",
+  "first_name": "Nikita",
+  "last_name": "K"
+}
+```
+
+### Response (пример)
+```json
+{
+  "is_registered_in_bot": true,
+  "tg_info_id": 15,
+  "is_blocked": false,
+  "linked": {
+    "organization_user_id": 7,
+    "employ_id": null
+  },
+  "available_roles": ["organization"]
+}
+```
+
+### Возможные ошибки
+- `403 TG_USER_BLOCKED`
+- `400 INVALID_TELEGRAM_ID`
+
+---
+
+### 6.1.2. Upsert tg_info (если нужен отдельный endpoint)
+**POST** `/employment/tg/upsert`
+
+> Можно объединить с `/employment/tg/check`, чтобы при первом обращении запись создавалась автоматически.
+
+---
+
+## 6.2. Валидация email и регистрация работодателя (Organization)
+
+### 6.2.1. Проверка email организации до регистрации
+**POST** `/employment/organizations/validate-email`
+
+### Назначение
+Бот дергает этот endpoint **до** создания organization, чтобы избежать дублей.
+
+### Request
+```json
+{
+  "email": "hr@example.com"
+}
+```
+
+### Response
+```json
+{
+  "email": "hr@example.com",
+  "is_available": true,
+  "reason": null
+}
+```
+
+### Ошибки
+- `409 EMAIL_ALREADY_EXISTS`
+- `422 INVALID_EMAIL_FORMAT`
+
+---
+
+### 6.2.2. Регистрация организации через Telegram-бот
+**POST** `/employment/organizations/register`
+
+### Назначение
+Создает:
+- базового `users` (role=`organization`) в рамках существующей полиморфной модели,
+- запись `organizations`,
+- связь с `tg_info`.
+
+### Request (пример)
+```json
+{
+  "telegram_id": 123456789,
+  "email": "hr@example.com",
+  "password": "temporary_or_generated",
+  "name": "Tech Company",
+  "city": "Almaty",
+  "description": "Ищем стажеров и junior разработчиков",
+  "website": "https://example.com"
+}
+```
+
+### Response
+```json
+{
+  "organization": {
+    "id": 31,
+    "user_id": 31,
+    "name": "Tech Company",
+    "city": "Almaty",
+    "description": "Ищем стажеров и junior разработчиков",
+    "website": "https://example.com"
+  },
+  "telegram_linked": true,
+  "preview": {
+    "vacancies_count": 0
+  }
+}
+```
+
+### Важные замечания
+- повторная регистрация по уже занятому email → `409`
+- повторная привязка `telegram_id` к другой организации → `409 TG_ALREADY_LINKED`
+
+---
+
+### 6.2.3. Просмотр своей анкеты организации (для бота/кабинета)
+**GET** `/employment/organizations/me`
+
+### Назначение
+Вернуть профиль организации и только краткий список её вакансий (названия), как вы описали.
+
+### Response
+```json
+{
+  "organization": {
+    "id": 31,
+    "name": "Tech Company",
+    "city": "Almaty",
+    "description": "..."
+  },
+  "vacancies_brief": [
+    {"id": 1001, "role_search": "Python Backend Intern", "status": "active"},
+    {"id": 1002, "role_search": "QA Junior", "status": "draft"}
+  ]
+}
+```
+
+---
+
+## 6.3. Регистрация и профиль соискателя (Employ)
+
+### 6.3.1. Регистрация соискателя
+**POST** `/employment/employ/register`
+
+### Назначение
+Создает профиль `employ` (без полиморфизма) и привязывает к `tg_info`.
+
+### Request (пример)
+```json
+{
+  "telegram_id": 555666777,
+  "email": "student@example.com",
+  "description": {
+    "about": "Студент backend направления",
+    "skills": ["Python", "FastAPI", "PostgreSQL"],
+    "experience": [
+      {"title": "Учебный проект", "details": "ClubVerse backend modules"}
+    ],
+    "career_interests": ["Backend", "DevOps"]
+  },
+  "links": [
+    "https://github.com/user",
+    "https://portfolio.example"
+  ],
+  "category": "backend",
+  "city": "Almaty"
+}
+```
+
+### Response
+```json
+{
+  "employ": {
+    "id": 501,
+    "email": "student@example.com",
+    "category": "backend",
+    "city": "Almaty",
+    "description": { "...": "..." },
+    "links": ["https://github.com/user", "https://portfolio.example"]
+  },
+  "telegram_linked": true,
+  "history_version_created": 1
+}
+```
+
+### Ошибки
+- `409 EMAIL_ALREADY_EXISTS`
+- `409 TG_ALREADY_LINKED`
+- `422 INVALID_DESCRIPTION_JSON`
+
+---
+
+### 6.3.2. Получить свою анкету соискателя (preview)
+**GET** `/employment/employ/me`
+
+### Назначение
+Бот/веб показывает текущую анкету в том виде, в каком она сохранена.
+
+---
+
+### 6.3.3. Обновить анкету соискателя
+**PATCH** `/employment/employ/me`
+
+### Назначение
+Обновляет профиль `employ`, создает запись в `employ_profile_history`, запускает пересчет AI-профиля/эмбеддингов.
+
+### Request (partial)
+```json
+{
+  "description": {
+    "skills": ["Python", "FastAPI", "PostgreSQL", "Docker"],
+    "career_interests": ["Backend", "MLOps"]
+  },
+  "links": ["https://github.com/user", "https://linkedin.com/in/user"]
+}
+```
+
+### Response
+```json
+{
+  "employ_id": 501,
+  "updated": true,
+  "history_version_created": 2,
+  "reindex_enqueued": true
+}
+```
+
+---
+
+### 6.3.4. История изменений резюме/анкеты
+**GET** `/employment/employ/me/history`
+
+### Query params
+- `skip`
+- `limit`
+
+### Response
+```json
+{
+  "items": [
+    {"version_no": 2, "created_at": "2026-02-25T12:00:00Z", "change_source": "telegram_bot"},
+    {"version_no": 1, "created_at": "2026-02-20T10:00:00Z", "change_source": "web"}
+  ],
+  "total": 2
+}
+```
+
+---
+
+### 6.3.5. Детали конкретной версии анкеты
+**GET** `/employment/employ/me/history/{version_no}`
+
+---
+
+## 6.4. Вакансии работодателя (Organization)
+
+### 6.4.1. Создать вакансию
+**POST** `/employment/vacancies`
+
+### Доступ
+Только `organization` (авторизованный пользователь существующей системы).
+
+### Request
+```json
+{
+  "role_search": "Python Backend Intern",
+  "description": {
+    "summary": "Ищем стажера на backend",
+    "requirements": ["Python", "FastAPI", "SQL"],
+    "nice_to_have": ["Docker", "Linux"],
+    "soft_skills": ["Коммуникация", "Обучаемость"],
+    "employment_type": "internship",
+    "remote": true
+  }
+}
+```
+
+### Response
+```json
+{
+  "id": 1001,
+  "organization_id": 31,
+  "role_search": "Python Backend Intern",
+  "status": "draft",
+  "description": { "...": "..." },
+  "ai_indexing": {
+    "queued": true
+  }
+}
+```
+
+---
+
+### 6.4.2. Список моих вакансий (кратко)
+**GET** `/employment/vacancies/my`
+
+### Назначение
+Как вы описали: сначала показывается только список названий вакансий.
+
+### Query params
+- `status` (optional)
+- `skip`, `limit`
+
+### Response
+```json
+{
+  "items": [
+    {"id": 1001, "role_search": "Python Backend Intern", "status": "active"},
+    {"id": 1002, "role_search": "QA Junior", "status": "draft"}
+  ],
+  "total": 2
+}
+```
+
+---
+
+### 6.4.3. Подробно получить вакансию
+**GET** `/employment/vacancies/{vacancy_id}`
+
+### Доступ
+- владелец (organization) — полный доступ
+- соискатель — только если вакансия активна (публичная карточка, если нужен web-поиск)
+
+---
+
+### 6.4.4. Обновить вакансию
+**PATCH** `/employment/vacancies/{vacancy_id}`
+
+### Поведение
+- обновляет данные вакансии,
+- ставит в очередь пересчет AI-индекса / match score snapshots.
+
+---
+
+### 6.4.5. Изменить статус вакансии
+**PATCH** `/employment/vacancies/{vacancy_id}/status`
+
+### Request
+```json
+{
+  "status": "active"
+}
+```
+
+Допустимые статусы:
+- `draft`
+- `active`
+- `paused`
+- `closed`
+- `archived`
+
+---
+
+## 6.5. AI-подбор (разделено по сценариям — важно)
+
+---
+
+### 6.5.1. Подходящие вакансии для соискателя (НЕ смешивать с кандидатами)
+**GET** `/employment/recommendations/vacancies-for-employ`
+
+### Доступ
+Только текущий `employ`
+
+### Query params (пример)
+- `top_k=20`
+- `city`
+- `remote`
+- `category`
+- `min_percent`
+- `with_explanation=true|false`
+
+### Назначение
+Возвращает **отсортированный** список подходящих вакансий и процент соответствия для соискателя.
+
+### Response (пример)
+```json
+{
+  "items": [
+    {
+      "vacancy_id": 1001,
+      "organization": {"id": 31, "name": "Tech Company"},
+      "role_search": "Python Backend Intern",
+      "match": {
+        "score": 0.73,
+        "percent_display": 81,
+        "confidence": "medium"
+      },
+      "explanation": {
+        "matched_skills": ["Python", "FastAPI", "PostgreSQL"],
+        "missing_skills": ["Docker"],
+        "strengths": ["Есть релевантный учебный проект"],
+        "recommended_next_steps": ["Добавить Docker в профиль", "Показать GitHub README"]
+      }
+    }
+  ],
+  "meta": {
+    "source": "ai_hybrid",
+    "generated_at": "2026-02-25T12:30:00Z"
+  }
+}
+```
+
+---
+
+### 6.5.2. Подходящие кандидаты под конкретную вакансию (отдельный endpoint)
+**GET** `/employment/vacancies/{vacancy_id}/recommended-candidates`
+
+### Доступ
+Только владелец вакансии / HR организации
+
+### Query params
+- `top_k=20`
+- `min_percent`
+- `with_explanation=true|false`
+- `only_active=true`
+
+### Назначение
+Возвращает **отсортированный** список кандидатов под вакансию + процент схожести + объяснение.
+
+### Response (пример)
+```json
+{
+  "vacancy": {
+    "id": 1001,
+    "role_search": "Python Backend Intern"
+  },
+  "items": [
+    {
+      "employ_id": 501,
+      "profile_brief": {
+        "city": "Almaty",
+        "category": "backend"
+      },
+      "match": {
+        "score": 0.78,
+        "percent_display": 86,
+        "confidence": "high"
+      },
+      "explanation": {
+        "matched_skills": ["Python", "SQL", "FastAPI"],
+        "missing_skills": ["Docker"],
+        "risk_flags": [],
+        "notes": ["Хороший потенциал для стажировки"]
+      }
+    }
+  ]
+}
+```
+
+---
+
+### 6.5.3. Детальное объяснение по конкретной паре (vacancy ↔ employ)
+**GET** `/employment/match-explanations`
+
+### Query params (обязательные)
+- `vacancy_id`
+- `employ_id`
+
+### Назначение
+Если нужно отдельно открыть экран “Почему 81%”.
+
+### Response
+```json
+{
+  "vacancy_id": 1001,
+  "employ_id": 501,
+  "match": {
+    "score": 0.73,
+    "percent_display": 81,
+    "confidence": "medium",
+    "model_version": "employment-hybrid-v1"
+  },
+  "explanation": {
+    "matched_skills": ["Python", "FastAPI", "PostgreSQL"],
+    "missing_skills": ["Docker", "CI/CD"],
+    "soft_skill_fit": ["Обучаемость"],
+    "experience_fit": {
+      "status": "close",
+      "comment": "Опыт учебных проектов релевантен для стажировки"
+    },
+    "recommended_courses_or_topics": ["Docker basics", "GitHub Actions basics"]
+  }
+}
+```
+
+---
+
+### 6.5.4. Пересчет AI-профиля / эмбеддингов (служебный)
+**POST** `/employment/ai/reindex`
+
+### Доступ
+`admin` / internal service token
+
+### Request (пример)
+```json
+{
+  "entity_type": "employ",
+  "entity_id": 501,
+  "force": false
+}
+```
+
+> Для MVP можно сделать только внутренним вызовом из service-layer / background worker.
+
+---
+
+## 6.6. Лента карточек для бота (свайп-механика)
+
+### 6.6.1. Получить следующую карточку для свайпа
+**GET** `/employment/feed/next`
+
+### Query params
+- `viewer_role=employ|organization`
+- `vacancy_id` (обязателен, если viewer_role=organization и подбор идет под конкретную вакансию)
+- `exclude_seen=true` (default)
+- `min_percent` (optional)
+
+### Назначение
+Бот получает следующую карточку:
+- для соискателя → вакансия
+- для работодателя → кандидат под выбранную вакансию
+
+### Response (пример для employ)
+```json
+{
+  "card_type": "vacancy",
+  "card_id": "vacancy:1001",
+  "vacancy_id": 1001,
+  "organization": {"id": 31, "name": "Tech Company"},
+  "role_search": "Python Backend Intern",
+  "preview_text": "Стажировка, backend, remote",
+  "match": {
+    "percent_display": 81,
+    "confidence": "medium"
+  }
+}
+```
+
+### Response (пример для organization)
+```json
+{
+  "card_type": "employ",
+  "card_id": "employ:501:vacancy:1001",
+  "employ_id": 501,
+  "profile_brief": {
+    "city": "Almaty",
+    "category": "backend"
+  },
+  "match": {
+    "percent_display": 86,
+    "confidence": "high"
+  }
+}
+```
+
+---
+
+## 6.7. Лайки / дизлайки / матчи (самый критичный раздел)
+
+### 6.7.1. Отправить реакцию (like/dislike) — idempotent
+**POST** `/employment/reactions`
+
+### Headers
+- `Idempotency-Key: <uuid>`
+
+### Request
+```json
+{
+  "initiator_role": "organization",
+  "initiator_telegram_id": 123456789,
+  "abonent_role": "employ",
+  "abonent_id": 501,
+  "vacancy_id": 1001,
+  "action": "like",
+  "source": "telegram_bot"
+}
+```
+
+### Что делает endpoint
+1. Валидирует инициатора (по tg_info / auth)
+2. Проверяет права (organization должен владеть vacancy_id)
+3. Сохраняет реакцию в `employment_reactions` (идемпотентно)
+4. Проверяет встречную реакцию:
+   - если встречного лайка нет → статус ожидания
+   - если есть встречный лайк → создает/обновляет `employment_matches` в `mutual_matched`
+5. На **первый лайк** отправляет уведомление абоненту на email (если настройка включена)
+6. Возвращает итоговый статус
+
+### Response (нет взаимного лайка)
+```json
+{
+  "reaction_saved": true,
+  "action": "like",
+  "match_status": "pending_response",
+  "mutual_match": false,
+  "notification": {
+    "email_sent": true,
+    "channel": "email"
+  }
+}
+```
+
+### Response (взаимный матч произошел)
+```json
+{
+  "reaction_saved": true,
+  "action": "like",
+  "match_status": "mutual_matched",
+  "mutual_match": true,
+  "match": {
+    "id": 7001,
+    "vacancy_id": 1001,
+    "matched_at": "2026-02-25T13:00:00Z"
+  }
+}
+```
+
+### Response (дизлайк)
+```json
+{
+  "reaction_saved": true,
+  "action": "dislike",
+  "match_status": "closed",
+  "mutual_match": false
+}
+```
+
+### Ключевые бизнес-правила
+- Повторный запрос с тем же `Idempotency-Key` → вернуть тот же результат
+- Повторный like без нового ключа и с уже существующей реакцией → либо `200` с `already_exists`, либо `409`, но лучше `200`
+- Нельзя лайкать самого себя
+- Нельзя лайкать неактивную вакансию / неактивного кандидата
+
+---
+
+### 6.7.2. Получить статус реакции/матча по паре
+**GET** `/employment/reactions/status`
+
+### Query params
+- `vacancy_id`
+- `employ_id`
+- `viewer_role`
+
+### Response
+```json
+{
+  "viewer_role": "organization",
+  "vacancy_id": 1001,
+  "employ_id": 501,
+  "viewer_reaction": "like",
+  "opposite_reaction": null,
+  "match_status": "pending_response"
+}
+```
+
+---
+
+### 6.7.3. Список матчей текущего пользователя
+**GET** `/employment/matches`
+
+### Query params
+- `status` (optional)
+- `skip`, `limit`
+
+### Назначение
+Показать активные/архивные матчи соискателю или работодателю.
+
+---
+
+### 6.7.4. Получить детали матча
+**GET** `/employment/matches/{match_id}`
+
+### Доступ
+Только участники матча / admin
+
+---
+
+### 6.7.5. Архивировать / закрыть матч (не удалять)
+**PATCH** `/employment/matches/{match_id}/status`
+
+### Request
+```json
+{
+  "status": "archived"
+}
+```
+
+Допустимые переходы (пример):
+- `mutual_matched` -> `notified`
+- `notified` -> `closed`
+- `closed` -> `archived`
+
+---
+
+## 6.8. Уведомления (email/telegram) — служебные endpoint’ы
+
+### 6.8.1. Повторить отправку уведомления по матчу (internal/admin)
+**POST** `/employment/matches/{match_id}/notify`
+
+### Назначение
+Нужен для админа/саппорта, если email не ушел.
+
+---
+
+### 6.8.2. Лог уведомлений (служебный)
+**GET** `/employment/notifications/logs`
+
+> Можно отложить до v2, но таблица логов крайне полезна для отладки.
+
+---
+
+## 6.9. Аналитика для университетов и HR
+
+### 6.9.1. Востребованные навыки (aggregated)
+**GET** `/employment/analytics/skills-demand`
+
+### Query params (пример)
+- `period=30d|90d|1y`
+- `city`
+- `category`
+- `group_by=skill|category|direction`
+
+### Назначение
+Какие навыки чаще всего встречаются в активных вакансиях.
+
+### Response
+```json
+{
+  "period": "90d",
+  "items": [
+    {"skill": "Python", "demand_count": 120, "growth_percent": 18},
+    {"skill": "SQL", "demand_count": 98, "growth_percent": 9}
+  ]
+}
+```
+
+---
+
+### 6.9.2. Готовность студентов к вакансиям
+**GET** `/employment/analytics/student-readiness`
+
+### Query params
+- `edu_org_id` (если привязка есть)
+- `category`
+- `period`
+
+### Важно
+Метрика должна быть составной, а не только одним “процентом”.
+
+### Response (пример)
+```json
+{
+  "summary": {
+    "students_count": 420,
+    "avg_readiness_percent": 57
+  },
+  "components": {
+    "hard_skills_coverage": 0.61,
+    "experience_fit": 0.42,
+    "profile_completeness": 0.74,
+    "confidence": 0.66
+  }
+}
+```
+
+---
+
+### 6.9.3. Динамика развития навыков / истории профилей
+**GET** `/employment/analytics/profile-growth`
+
+### Назначение
+На основе `employ_profile_history` и AI snapshots показывает динамику по группам студентов.
+
+---
+
+# 7. Детализация бизнес-логики матча (по вашей схеме, но безопаснее)
+
+## 7.1. Ваш исходный сценарий (суть)
+Вы передаете:
+- `role`
+- `telegram_id`
+
+`role` — роль инициатора, вторая роль — абонент.
+Далее общий матч, если появляется вторая запись, где роль уже совпадает с абонентом.
+
+## 7.2. Как реализовать это корректно в API
+### Вместо удаления записей:
+1. Первый лайк:
+   - пишем в `employment_reactions`
+   - создаем/обновляем `employment_matches` со статусом `pending_response`
+   - отправляем email абоненту
+2. Ответный лайк:
+   - пишем вторую реакцию
+   - обновляем `employment_matches.status = mutual_matched`
+   - отправляем уведомления обеим сторонам
+3. Дизлайк в ответ:
+   - фиксируем реакцию
+   - `employment_matches.status = closed` (или `expired`)
+4. Дальше можно архивировать, но **не удалять**
+
+---
+
+# 8. Слабые места и как они закрываются endpoint-дизайном
+
+## 8.1. “Все-в-одном endpoint” (AI выдача)
+**Проблема:** один endpoint на вакансии+кандидатов  
+**Решение:**  
+- `/employment/recommendations/vacancies-for-employ`
+- `/employment/vacancies/{vacancy_id}/recommended-candidates`
+
+---
+
+## 8.2. Повторы от Telegram / сетевые ретраи
+**Проблема:** дубли реакций и двойные матчи  
+**Решение:**  
+- `Idempotency-Key`
+- таблица идемпотентности для reactions
+- safe-return повторного результата
+
+---
+
+## 8.3. Потеря аудита из-за удаления матчей
+**Проблема:** нет аналитики, нельзя дебажить  
+**Решение:**  
+- статусы вместо удаления
+- отдельная история реакций
+- лог уведомлений
+
+---
+
+# 9. Рекомендуемые схемы response-моделей (Pydantic, концептуально)
+
+## 9.1. `MatchScoreOut`
+```python
+class MatchScoreOut(BaseModel):
+    score: float  # внутренний score 0..1
+    percent_display: int  # UI-процент 0..100
+    confidence: Literal["low", "medium", "high"]
+```
+
+## 9.2. `MatchExplanationOut`
+```python
+class MatchExplanationOut(BaseModel):
+    matched_skills: list[str] = []
+    missing_skills: list[str] = []
+    strengths: list[str] = []
+    risks: list[str] = []
+    recommended_next_steps: list[str] = []
+```
+
+## 9.3. `ReactionCreateIn`
+```python
+class ReactionCreateIn(BaseModel):
+    initiator_role: Literal["employ", "organization"]
+    initiator_telegram_id: int
+    abonent_role: Literal["employ", "organization"]
+    abonent_id: int
+    vacancy_id: int | None = None
+    action: Literal["like", "dislike"]
+    source: Literal["telegram_bot", "web"] = "telegram_bot"
+```
+
+---
+
+# 10. Пример маршрутизации (как встроить в текущий проект)
+
+В `main.py` (по аналогии с текущими роутерами):
+```python
+from apps.employment import routes as employment_routes
+
+app.include_router(employment_routes.router)
+```
+
+Пример префикса в `apps/employment/routes.py`:
+```python
+router = APIRouter(prefix="/employment", tags=["employment"])
+```
+
+---
+
+# 11. Этапы внедрения endpoint’ов (MVP -> v2)
+
+## MVP (обязательный минимум)
+1. `/employment/tg/check`
+2. `/employment/organizations/validate-email`
+3. `/employment/organizations/register`
+4. `/employment/employ/register`
+5. `/employment/vacancies` (CRUD минимум)
+6. `/employment/vacancies/my`
+7. `/employment/vacancies/{id}`
+8. `/employment/recommendations/vacancies-for-employ`
+9. `/employment/vacancies/{id}/recommended-candidates`
+10. `/employment/reactions` (idempotent)
+11. `/employment/matches`
+
+## v1.1
+- `/employment/feed/next`
+- `/employment/match-explanations`
+- `/employment/employ/me/history`
+- `/employment/matches/{id}/status`
+
+## v2
+- расширенная аналитика
+- служебные endpoint’ы уведомлений
+- публичные отчеты для вузов/HR
+- более глубокие AI explanations и рекомендации развития
+
+---
+
+# 12. Короткое резюме архитектурного решения
+
+Чтобы новый функционал был устойчивым и расширяемым, API для Employment / Jobs должен:
+
+- быть **отдельным модулем** в текущем FastAPI modular monolith;
+- иметь **разделенные endpoint’ы** для двух AI-сценариев (соискатель vs работодатель);
+- использовать **идемпотентность** для реакций;
+- **не удалять** матчи, а хранить историю и статусы;
+- хранить **историю изменений профиля** соискателя;
+- отдавать **процент + объяснение**, а не только “сырую схожесть”.
+
+Такой дизайн совместим с вашей текущей архитектурой (service-layer, search/Qdrant, tracking) и хорошо подходит для реализации Telegram-бота в стиле свайпов/матчей.
+

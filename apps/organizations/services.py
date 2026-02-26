@@ -20,7 +20,6 @@ class OrganizationService:
             hashed_password=hashed_pw,
             role=UserRole.ORGANIZATION,
             is_active=True,
-            username=schema.email,
             name=schema.name,
             city=schema.city,
             description=schema.description,
