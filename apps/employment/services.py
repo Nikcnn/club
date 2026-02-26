@@ -317,6 +317,7 @@ class EmploymentService:
             initiator_entity_type=initiator_entity_type,
             initiator_entity_id=initiator_entity_id,
             target_entity_type=target_entity_type,
+            source=ReactionSource.TELEGRAM,
             target_entity_id=target_entity_id,
             vacancy_id=schema.vacancy_id,
             action=schema.action,
