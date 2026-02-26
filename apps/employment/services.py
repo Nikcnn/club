@@ -264,7 +264,13 @@ class EmploymentService:
         return vacancy
 
     @staticmethod
-    async def submit_reaction(db: AsyncSession, schema: ReactionRequest, idempotency_key: str) -> tuple[EmploymentReaction, EmploymentMatch | None, bool]:
+    async def submit_reaction(
+        db: AsyncSession,
+        schema,  # ReactionRequest (TG формат)
+        idempotency_key: str,
+    ) -> tuple[EmploymentReaction, EmploymentMatch | None, bool]:
+
+        # 0) идемпотентность по ключу
         existing_key = (
             await db.execute(select(EmploymentReaction).where(EmploymentReaction.idempotency_key == idempotency_key))
         ).scalars().first()
@@ -272,21 +278,56 @@ class EmploymentService:
             match = await EmploymentService._find_match_for_reaction(db, existing_key)
             return existing_key, match, True
 
+        # 1) находим TgInfo по telegram_id
+        tg = (await db.execute(select(TgInfo).where(TgInfo.telegram_id == schema.telegram_id))).scalars().first()
+        if not tg:
+            raise HTTPException(status_code=404, detail="Telegram profile not found")
+
+        # 2) вычисляем initiator/target из TG-контекста
+        if schema.role == EntityType.CANDIDATE:
+            if not tg.linked_candidate_id:
+                raise HTTPException(status_code=404, detail="Telegram is not linked to candidate")
+
+            vacancy = (await db.execute(select(Vacancy).where(Vacancy.id == schema.vacancy_id))).scalars().first()
+            if not vacancy:
+                raise HTTPException(status_code=404, detail="Vacancy not found")
+
+            initiator_entity_type = EntityType.CANDIDATE
+            initiator_entity_id = tg.linked_candidate_id
+
+            target_entity_type = EntityType.ORGANIZATION
+            target_entity_id = vacancy.organization_id
+
+        elif schema.role == EntityType.ORGANIZATION:
+            # С ТВОИМ ВХОДОМ НЕЛЬЗЯ ОПРЕДЕЛИТЬ КАНДИДАТА, КОТОРОГО ЛАЙКНУЛИ
+            # (vacancy_id не несёт candidate_id)
+            raise HTTPException(
+                status_code=400,
+                detail="For role=organization you must provide candidate context (candidate_id). With current payload it is impossible.",
+            )
+        else:
+            raise HTTPException(status_code=400, detail="Invalid role")
+
+        # 3) request_hash — теперь хешируем TG payload
         canonical_payload = json.dumps(schema.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
         request_hash = sha256(canonical_payload.encode("utf-8")).hexdigest()
+
+        # 4) создаём реакцию уже в канонических полях модели
         reaction = EmploymentReaction(
-            initiator_entity_type=schema.initiator_entity_type,
-            initiator_entity_id=schema.initiator_entity_id,
-            target_entity_type=schema.target_entity_type,
-            target_entity_id=schema.target_entity_id,
+            initiator_entity_type=initiator_entity_type,
+            initiator_entity_id=initiator_entity_id,
+            target_entity_type=target_entity_type,
+            target_entity_id=target_entity_id,
             vacancy_id=schema.vacancy_id,
             action=schema.action,
-            source=schema.source,
             idempotency_key=idempotency_key,
             request_hash=request_hash,
             processed_at=datetime.now(timezone.utc),
         )
+
         db.add(reaction)
+
+        # 5) дедуп по target (у тебя уже было)
         try:
             await db.flush()
         except IntegrityError as exc:
@@ -298,39 +339,48 @@ class EmploymentService:
                 await db.execute(
                     select(EmploymentReaction).where(
                         and_(
-                            EmploymentReaction.initiator_entity_type == schema.initiator_entity_type,
-                            EmploymentReaction.initiator_entity_id == schema.initiator_entity_id,
-                            EmploymentReaction.target_entity_type == schema.target_entity_type,
-                            EmploymentReaction.target_entity_id == schema.target_entity_id,
+                            EmploymentReaction.initiator_entity_type == initiator_entity_type,
+                            EmploymentReaction.initiator_entity_id == initiator_entity_id,
+                            EmploymentReaction.target_entity_type == target_entity_type,
+                            EmploymentReaction.target_entity_id == target_entity_id,
                             EmploymentReaction.vacancy_id == schema.vacancy_id,
                         )
                     )
                 )
             ).scalars().first()
+
             if not existing_target:
                 raise
 
             match = await EmploymentService._find_match_for_reaction(db, existing_target)
             return existing_target, match, True
+
+        # 6) матч-логика (reverse LIKE)
         match = None
         if schema.action == ReactionAction.LIKE:
             reverse = (
                 await db.execute(
                     select(EmploymentReaction).where(
                         and_(
-                            EmploymentReaction.initiator_entity_type == schema.target_entity_type,
-                            EmploymentReaction.initiator_entity_id == schema.target_entity_id,
-                            EmploymentReaction.target_entity_type == schema.initiator_entity_type,
-                            EmploymentReaction.target_entity_id == schema.initiator_entity_id,
-                            or_(EmploymentReaction.vacancy_id == schema.vacancy_id, EmploymentReaction.vacancy_id.is_(None)),
+                            EmploymentReaction.initiator_entity_type == target_entity_type,
+                            EmploymentReaction.initiator_entity_id == target_entity_id,
+                            EmploymentReaction.target_entity_type == initiator_entity_type,
+                            EmploymentReaction.target_entity_id == initiator_entity_id,
+                            or_(
+                                EmploymentReaction.vacancy_id == schema.vacancy_id,
+                                EmploymentReaction.vacancy_id.is_(None),
+                            ),
                             EmploymentReaction.action == ReactionAction.LIKE,
                         )
                     )
                 )
             ).scalars().first()
+
             if reverse:
-                candidate_id = schema.initiator_entity_id if schema.initiator_entity_type == EntityType.CANDIDATE else schema.target_entity_id
-                organization_id = schema.initiator_entity_id if schema.initiator_entity_type == EntityType.ORGANIZATION else schema.target_entity_id
+                # здесь всё детерминировано: initiator всегда candidate (мы выше запретили org)
+                candidate_id = initiator_entity_id
+                organization_id = target_entity_id
+
                 match = (
                     await db.execute(
                         select(EmploymentMatch).where(
@@ -342,6 +392,7 @@ class EmploymentService:
                         )
                     )
                 ).scalars().first()
+
                 if not match:
                     match = EmploymentMatch(
                         candidate_id=candidate_id,
