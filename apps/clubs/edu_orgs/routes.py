@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.clubs.edu_orgs.schemas import (
@@ -9,7 +9,10 @@ from apps.clubs.edu_orgs.schemas import (
     EducationalOrganizationUpdate,
 )
 from apps.clubs.edu_orgs.services import EduOrgService
+from apps.core.deps import get_current_user
+from apps.core.storage import upload_image_to_minio
 from apps.db.dependencies import get_db
+from apps.users.models import User
 
 router = APIRouter(prefix="/educational-organizations", tags=["Educational organizations"])
 
@@ -18,7 +21,10 @@ router = APIRouter(prefix="/educational-organizations", tags=["Educational organ
 async def create_educational_organization(
     schema: EducationalOrganizationCreate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="Only admin can ")
     return await EduOrgService.create(db, schema)
 
 
@@ -26,12 +32,22 @@ async def create_educational_organization(
 async def list_educational_organizations(
     city: Optional[str] = Query(None, description="Фильтр по городу"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+
 ):
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="Only admin can ")
     return await EduOrgService.get_all(db, city)
 
 
 @router.get("/{edu_org_id}", response_model=EducationalOrganizationResponse)
-async def get_educational_organization(edu_org_id: int, db: AsyncSession = Depends(get_db)):
+async def get_educational_organization(
+    edu_org_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="Only admin can ")
     edu_org = await EduOrgService.get_by_id(db, edu_org_id)
     if not edu_org:
         raise HTTPException(status_code=404, detail="Educational organization not found")
@@ -43,7 +59,11 @@ async def update_educational_organization(
     edu_org_id: int,
     schema: EducationalOrganizationUpdate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+
 ):
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="Only admin can ")
     edu_org = await EduOrgService.get_by_id(db, edu_org_id)
     if not edu_org:
         raise HTTPException(status_code=404, detail="Educational organization not found")
@@ -51,8 +71,35 @@ async def update_educational_organization(
 
 
 @router.delete("/{edu_org_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_educational_organization(edu_org_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_educational_organization(
+    edu_org_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="Only admin can ")
     edu_org = await EduOrgService.get_by_id(db, edu_org_id)
     if not edu_org:
         raise HTTPException(status_code=404, detail="Educational organization not found")
     await EduOrgService.delete(db, edu_org)
+
+
+@router.post("/{edu_org_id}/logo", response_model=EducationalOrganizationResponse)
+async def upload_educational_organization_logo(
+    edu_org_id: int,
+    logo: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+
+):
+    """Загрузка логотипа образовательного учреждения в MinIO."""
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="Only admin can ")
+    edu_org = await EduOrgService.get_by_id(db, edu_org_id)
+    if not edu_org:
+        raise HTTPException(status_code=404, detail="Educational organization not found")
+
+    edu_org.logo_key = await upload_image_to_minio(logo, folder=f"educational-organizations/{edu_org_id}")
+    await db.commit()
+    await db.refresh(edu_org)
+    return edu_org

@@ -9,7 +9,11 @@ from apps.users.models import User, UserRole
 from apps.clubs.schemas import ClubCreate, ClubUpdate, ClubResponse
 from apps.clubs.services import ClubService
 from apps.clubs.models import Club
+import logging
 
+
+
+logger = logging.getLogger("uvicorn.error")
 router = APIRouter(prefix="/clubs", tags=["Clubs"])
 
 # TODO(search): при добавлении delete-эндпоинта клуба вызывать SearchService.delete_point("club", club_id) после commit.
@@ -82,6 +86,7 @@ async def upload_my_logo(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    logger.info(f"Upload logo for club {logo}")
     """Загрузка логотипа клуба в MinIO с сохранением ключа в профиле."""
     if current_user.role != UserRole.CLUB:
         raise HTTPException(status_code=403, detail="Only clubs can upload logo")

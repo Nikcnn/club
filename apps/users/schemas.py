@@ -8,7 +8,6 @@ from apps.users.models import UserRole
 
 class UserCreateBase(BaseModel):
     email: EmailStr
-    username: str
     password: str
     avatar_key: Optional[str] = None
 
@@ -16,7 +15,6 @@ class UserCreateBase(BaseModel):
 class UserResponseBase(BaseModel):
     id: int
     email: EmailStr
-    username: str
     avatar_key: Optional[str] = None
     role: UserRole
     is_active: bool

@@ -37,7 +37,7 @@ class DomainTransitionError(ValueError):
 class PaymentService:
     @staticmethod
     def _hash_payload(payload: dict) -> str:
-        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
         return hashlib.sha256(encoded).hexdigest()
 
     @staticmethod
@@ -250,16 +250,24 @@ class PaymentService:
         return payment
 
     @staticmethod
-    async def handle_webhook(db: AsyncSession, data: PaymentWebhookData, headers: Optional[Mapping[str, str]] = None) -> Payment:
+    async def handle_webhook(db: AsyncSession, data: PaymentWebhookData,
+                             headers: Optional[Mapping[str, str]] = None) -> Payment:
+        canonical_payload = {
+            **data.payload,
+            "provider_payment_id": data.provider_payment_id,  # <- обязательно
+            "provider_event_id": data.provider_event_id,  # <- желательно
+            "status": data.status,
+            "event_type": data.event_type,
+        }
+
         return await PaymentService.process_webhook(
             db,
             provider_payment_id=data.provider_payment_id,
             is_success=data.status == "success",
             provider_event_id=data.provider_event_id,
-            payload={**data.payload, "status": data.status, "event_type": data.event_type},
+            payload=canonical_payload,
             headers=headers,
         )
-
     @staticmethod
     async def get_by_id(db: AsyncSession, payment_id: int) -> Optional[Payment]:
         query = select(Payment).where(Payment.id == payment_id)

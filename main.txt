@@ -1,0 +1,84 @@
+
+Ниже — технический разбор проекта без внесения изменений в ветку (файлы не добавлял и не изменял).
+
+1) Архитектура и стек
+
+Это modular monolith на FastAPI: единый main.py собирает роутеры модулей (users, clubs, investors, funding, payments, competitions, news, reviews, ratings, search, media) и инициализирует lifespan-хук.
+
+На старте приложения вызывается ensure_collection() для Qdrant, т.е. векторный контур поиска поднимается на этапе старта API.
+
+Persistence слой — SQLAlchemy 2.x async (create_async_engine, async_sessionmaker, dependency get_db).
+
+Конфигурация через pydantic-settings (env-file .env), включая DB, JWT, S3/MinIO, moderation и OpenRouter.
+
+2) Доменная модель
+
+Базовый пользователь User + полиморфные роли (member, club, organization, investor) через polymorphic_on.
+
+Club наследуется от User (FK clubs.id -> users.id), хранит профиль и связи с кампаниями/новостями/соревнованиями/отзывами/рейтингом.
+
+Funding: Campaign + Investment с enum-статусами и DB-check constraints (goal_amount > 0, amount > 0, ends_at > starts_at).
+
+Reviews: общий базис + moderation-поля (moderation_status, toxicity_score, moderation_labels) и uniqueness на (entity,user).
+
+Competitions: подписки пользователей, ограничение уникальности подписки и временной overlap-контроль на сервисном уровне.
+
+3) Auth / Security
+
+JWT с разделением на access и refresh по полю type, что корректно защищает от подмены типа токена.
+
+Проверка текущего пользователя:
+
+decode JWT
+
+проверка type == access
+
+загрузка пользователя из БД и is_active guard.
+
+Users API: register/login/refresh/me + загрузка аватара в object storage.
+
+4) Поиск (самая сложная подсистема)
+
+Векторизация через SentenceTransformer (all-MiniLM-L6-v2) в thread offload (anyio.to_thread).
+
+Индексация в Qdrant: клубы + кампании + новости, doc-id детерминированный UUID5 от type:entity_id, payload хранит text/metadata.
+
+Online search: semantic query -> vector search -> normalize -> optional precision-filter для city-запросов (exact phrase / all tokens / numeric nearest).
+
+Персонализация: re-rank c весами role/city/category/type из настроек.
+
+Трекинг: отдельные search_events, click_events, user_search_profiles.
+
+Recommendation API:
+
+если есть клики, строится profile vector и векторная рекомендация;
+
+fallback на campaigns (для инвестора/запроса campaign) или clubs.
+
+5) Moderation и репутация
+
+Review pipeline:
+
+антидубликат отзыва от того же пользователя,
+
+ModerationService.analyze_text,
+
+decide_status,
+
+публикация только approved,
+
+пересчет рейтинга только по approved. F:apps/reviews/services.py†L12-L42】
+
+Moderation уходит в OpenRouter Chat Completions, ожидает JSON-ответ, есть robust-parsing fenced JSON/embedded JSON + fallback-mode при сбоях.
+
+Рейтинги считаются агрегатами SQL и upsert’ятся через PostgreSQL on_conflict_do_update.
+
+6) Инфраструктура / runtime
+
+Docker multi-stage: build venv + runtime, gunicorn+uvicorn worker, порт 8909.
+
+docker-compose.yml минимальный, поднимает только app-сервис с .env.
+
+Миграции Alembic подключены к Base.metadata, URL берется из settings и нормализуется в postgresql+asyncpg.
+
+Последние миграции покрывают moderation, subscriptions, educational organizations.

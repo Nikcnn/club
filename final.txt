@@ -1,0 +1,631 @@
+Ниже — **финальный текстовый документ (исправленная версия ТЗ/спеки)** по новому функционалу Employment / Jobs, с учетом ваших последних замечаний (про `club_member`, идемпотентность, хранение матчей, границы аналитики/персональных данных и naming). Документ опирается на уже подготовленные материалы по endpoint’ам и AI-части (отдельный контур Employment, разделение AI-сценариев, идемпотентность реакций, хранение истории, гибридный AI-пайплайн и Qdrant).      
+
+---
+
+# Финальное ТЗ (исправленное)
+
+## Новый функционал Employment / Jobs (Telegram-бот + AI-подбор)
+
+## 1. Цель и общий контур
+
+В существующий проект добавляется отдельный функциональный модуль **Employment / Jobs** для:
+
+* поиска вакансий соискателями;
+* поиска кандидатов работодателями/HR;
+* взаимодействия через Telegram-бот в механике лайков/дизлайков/матчей;
+* AI-подбора кандидатов и вакансий;
+* аналитики для университетов и HR.
+
+Функционал реализуется **как отдельный модуль** внутри текущего FastAPI modular monolith (без смешивания с текущим поиском клубов/новостей/кампаний). Это соответствует ранее подготовленной архитектуре endpoint’ов и AI-контура.  
+
+---
+
+## 2. Исправление терминов и naming (обязательно)
+
+Ниже — **каноничные названия**, чтобы не размножать неоднозначные термины по БД, API, схемам и боту.
+
+### 2.1. Каноничные названия (новые)
+
+* `employ` → **`candidate_profile`** (или `job_seeker_profile`)
+* `vacancy.role_search` → **`position_title`**
+* `abonent` → **`target_entity`** / `target_user_id` / `target_candidate_id`
+* `mail` → **`email`** (одно поле, каноническое)
+
+### 2.2. Допустимая совместимость (MVP)
+
+На переходный период backend может принимать legacy-поля:
+
+* `role_search` → маппить в `position_title`
+* `abonent_*` → маппить в `target_*`
+* `mail` → маппить в `email`
+
+Но **во внутренней модели и в новых схемах** использовать только каноничные имена.
+
+### 2.3. Почему это важно
+
+Имена быстро расходятся в:
+
+* DB,
+* Pydantic/FastAPI схемах,
+* Telegram-боте,
+* фронте,
+* аналитике,
+* AI payload’ах.
+
+Если naming не стабилизировать сейчас, поддержка станет дорогой и появятся скрытые баги интеграции.
+
+---
+
+## 3. Актеры и роли
+
+### 3.1. Роли
+
+* **candidate** (соискатель) — отдельная сущность профиля (без полиморфизма)
+* **organization** (работодатель) — использует существующую модель `Organization` (полиморфизм уже есть)
+* **hr** — представитель работодателя (может быть role/permission поверх organization)
+* **admin**
+
+### 3.2. Каналы доступа
+
+* **Telegram bot** (основной интерфейс свайпов/матчей)
+* **Web/mobile** (кабинеты, просмотр профилей, вакансий, аналитика)
+* **Internal services** (AI-пайплайн, индексация, уведомления)
+
+Роли и разделение сценариев уже корректно заложены в ранее описанных endpoint’ах, и их нужно сохранить.  
+
+---
+
+## 4. Модель данных (исправленная)
+
+## 4.1. `tg_info`
+
+Связка Telegram-пользователя с системой.
+
+**Минимальные поля:**
+
+* `id`
+* `telegram_id` (UNIQUE, NOT NULL)
+* `telegram_username`
+* `first_name`
+* `last_name`
+* `is_active`
+* `is_blocked`
+* `linked_user_id` (nullable, FK → `users.id`) — для organization/HR
+* `linked_candidate_id` (nullable, FK → `candidate_profiles.id`)
+* `created_at`, `updated_at`, `last_seen_at`
+
+> На `/start` бот сначала проверяет/создает запись в `tg_info`. Это соответствует ранее описанному сценарию onboarding.  
+
+---
+
+## 4.2. `candidate_profiles` (вместо `employ`)
+
+Профиль соискателя.
+
+**Минимальные поля:**
+
+* `id`
+* `email` (UNIQUE, NOT NULL)
+* `description_json` (JSONB, NOT NULL) — данные анкеты от бота/фронта
+* `links` (JSONB array или TEXT[]; nullable)
+* `category` (nullable, индекс)
+* `city` (nullable, индекс)
+* `resume_text` (nullable)
+* `is_active` (bool, default true)
+* `created_at`, `updated_at`
+
+**Важно:**
+
+* Не хранить одновременно `mail` и `email`.
+* Если нужен email для отображения отдельно — делать `display_email` только при реальной необходимости.
+
+---
+
+## 4.3. `vacancies`
+
+Вакансии работодателя.
+
+**Минимальные поля:**
+
+* `id`
+* `organization_id` (FK → `organizations.id`, NOT NULL, индекс)
+* `position_title` (вместо `role_search`, NOT NULL, индекс)
+* `description_json` (JSONB, NOT NULL)
+* `status` (`draft | active | paused | closed | archived`)
+* `employment_type` (optional)
+* `city` (optional)
+* `is_remote` (optional)
+* `created_at`, `updated_at`
+
+---
+
+## 4.4. `club_members` (исправлено, полное описание)
+
+Вы правильно указали, что таблица была описана неполно. Ниже — **минимально осмысленная membership-модель**.
+
+**Поля:**
+
+* `id`
+* `club_id` (FK → `clubs.id`, NOT NULL)
+* `user_id` (FK → `users.id`, NOT NULL)
+  *Если хотите отдельно привязывать соискателей, можно добавить `candidate_id`, но не смешивать в одном поле.*
+* `role_in_club` (`owner | admin | member | hr_manager`, default `member`)
+* `status` (`active | pending | invited | removed`, default `pending`)
+* `joined_at`
+* `created_at`, `updated_at`
+
+**Ограничения:**
+
+* `UNIQUE (club_id, user_id)`
+
+> Без `user_id`, роли и статуса таблица не выполняет роль membership-модели.
+
+---
+
+## 4.5. `employment_reactions` (история лайков/дизлайков, не удаляется)
+
+Это **журнал действий**, а не “одноразовый матч”.
+
+**Поля:**
+
+* `id`
+* `initiator_entity_type` (`candidate | organization`)
+* `initiator_entity_id`
+* `target_entity_type` (`candidate | organization`)
+* `target_entity_id`
+* `vacancy_id` (nullable для некоторых сценариев, но обязателен для подбора кандидатов под вакансию)
+* `action` (`like | dislike`)
+* `source` (`telegram_bot | web`)
+* `idempotency_key` (NOT NULL)
+* `request_hash` (для строгой проверки повторов)
+* `created_at`
+* `processed_at`
+
+**Уникальность / защита от дублей:**
+
+* Вариант A (MVP): уникальный индекс по бизнес-ключу действия
+  `UNIQUE (initiator_entity_type, initiator_entity_id, target_entity_type, target_entity_id, vacancy_id)`
+* Вариант B (лучше): отдельная таблица идемпотентности (как в платежах) + журнал действий
+
+---
+
+## 4.6. `employment_matches` (матчи)
+
+**Записи не удаляются.** Меняется только статус.
+
+**Поля:**
+
+* `id`
+* `candidate_id`
+* `organization_id`
+* `vacancy_id`
+* `status` (`pending_response | mutual_matched | notified | closed | expired | archived`)
+* `matched_at`
+* `notified_at`
+* `closed_at`
+* `created_at`, `updated_at`
+
+**Принцип:**
+
+* при первом лайке — может появиться `pending_response` (или это хранится только в реакциях, а матч создается после взаимного лайка — оба варианта допустимы);
+* при взаимном лайке — `mutual_matched`;
+* после уведомлений — `notified`;
+* далее — `closed/archived/expired`.
+
+Это исправляет проблему потери аудита/аналитики при удалении записей. 
+
+---
+
+## 4.7. `candidate_profile_history` (история изменений резюме/анкеты)
+
+Для хранения истории изменений профиля.
+
+**Поля:**
+
+* `id`
+* `candidate_id` (FK)
+* `version_no` (int)
+* `snapshot_json` (JSONB)
+* `change_source` (`telegram_bot | web | system`)
+* `created_at`
+
+Это уже соответствует ранее описанной логике обновления профиля и истории. 
+
+---
+
+## 4.8. AI-таблицы (рекомендуется)
+
+### `ai_match_scores`
+
+* `id`
+* `vacancy_id`
+* `candidate_id`
+* `match_score` (0..1, внутренний)
+* `match_percent_display` (0..100, UI)
+* `confidence`
+* `model_version`
+* `computed_at`
+
+### `ai_match_explanations`
+
+* `id`
+* `score_id`
+* `explanation_json`
+* `computed_at`
+
+### `skills_catalog`, `skill_aliases`, `candidate_skills`, `vacancy_skills`
+
+Минимальный слой нормализации навыков для корректного AI и аналитики. Эта необходимость прямо следует из AI-документа (алиасы навыков и канонические `skill_id`).  
+
+---
+
+## 5. API-контур (финальная структура)
+
+Базовый префикс:
+
+* **`/employment`** (или `/api/v1/employment`)
+
+### Подгруппы:
+
+* `/employment/tg/*`
+* `/employment/organizations/*`
+* `/employment/candidates/*` (вместо `/employ/*`)
+* `/employment/vacancies/*`
+* `/employment/recommendations/*`
+* `/employment/reactions/*`
+* `/employment/matches/*`
+* `/employment/analytics/*`
+* `/employment/ai/*` (служебные)
+
+Ранее предложенное разделение endpoint’ов (отдельно для соискателя и работодателя) сохраняется и является правильным. 
+
+---
+
+## 6. Ключевые endpoint’ы (исправленная версия MVP)
+
+## 6.1. Telegram onboarding
+
+### `POST /employment/tg/check`
+
+Проверка `telegram_id`, создание/обновление `tg_info`, определение доступных ролей.
+
+---
+
+## 6.2. Регистрация работодателя (organization)
+
+### `POST /employment/organizations/validate-email`
+
+Проверка email **до** регистрации, чтобы избежать дублей. Такой порядок уже корректно описан в спеках. 
+
+### `POST /employment/organizations/register`
+
+Создание пользователя + organization + связь с `tg_info`.
+
+### `GET /employment/organizations/me`
+
+Возвращает профиль организации и краткий список её вакансий (только названия/статусы), как вы и описали. 
+
+---
+
+## 6.3. Регистрация и профиль соискателя
+
+### `POST /employment/candidates/register`
+
+(ранее `/employment/employ/register`)
+
+Создает профиль соискателя и привязывает к `tg_info`. В ранее подготовленном документе логика регистрации и привязки описана верно, меняется только naming. 
+
+### `GET /employment/candidates/me`
+
+Текущая анкета (preview)
+
+### `PATCH /employment/candidates/me`
+
+Обновление анкеты + создание записи в `candidate_profile_history` + постановка AI-переиндексации
+
+### `GET /employment/candidates/me/history`
+
+История версий анкеты
+
+---
+
+## 6.4. Вакансии работодателя
+
+### `POST /employment/vacancies`
+
+Создать вакансию (`position_title`, `description_json`)
+
+### `GET /employment/vacancies/my`
+
+Краткий список моих вакансий (для Telegram-бота — сначала только названия)
+
+### `GET /employment/vacancies/{vacancy_id}`
+
+Детали вакансии
+
+### `PATCH /employment/vacancies/{vacancy_id}`
+
+Обновление вакансии
+
+### `PATCH /employment/vacancies/{vacancy_id}/status`
+
+Изменение статуса (`draft/active/paused/closed/archived`)
+
+---
+
+## 6.5. AI-подбор (разделенные сценарии)
+
+### `GET /employment/recommendations/vacancies-for-candidate`
+
+Подходящие вакансии для текущего соискателя
+
+### `GET /employment/vacancies/{vacancy_id}/recommended-candidates`
+
+Подходящие кандидаты под конкретную вакансию работодателя
+
+### `GET /employment/match-explanations?vacancy_id=...&candidate_id=...`
+
+Детальное объяснение совпадения
+
+Разделение этих сценариев уже обосновано в предыдущей спеке и должно сохраняться. 
+
+---
+
+## 6.6. Свайпы / реакции / матчи (критичный блок)
+
+### `POST /employment/reactions`
+
+**Идемпотентный endpoint** для лайка/дизлайка.
+
+**Требования:**
+
+* Header `Idempotency-Key` обязателен
+* повторный запрос с тем же ключом возвращает тот же результат
+* защита от повторных email-уведомлений
+* защита от двойных матчей
+* защита от гонок (race conditions)
+
+Это обязательное исправление, поскольку Telegram/webhook и пользовательские ретраи создают дубли.  
+
+### `GET /employment/matches`
+
+Список матчей пользователя (candidate/organization)
+
+### `GET /employment/matches/{match_id}`
+
+Детали матча
+
+### `PATCH /employment/matches/{match_id}/status`
+
+Смена статуса (`notified`, `closed`, `archived`, и т.п.)
+
+---
+
+## 7. Логика матча (исправленная)
+
+## 7.1. Исходная идея (сохранена)
+
+Вы описали механику правильно по сути:
+
+* бот отправляет `role` + `telegram_id`,
+* первый лайк формирует ожидание,
+* второй ответ дает матч.
+
+## 7.2. Исправление реализации
+
+### Нельзя:
+
+* удалять запись матча/ожидания после взаимного лайка.
+
+### Нужно:
+
+* хранить:
+
+  1. **реакции** (`employment_reactions`) — полный журнал действий
+  2. **матчи** (`employment_matches`) — состояние взаимной связи
+
+### Рекомендуемый поток
+
+1. Инициатор ставит `like`
+2. Создается запись в `employment_reactions`
+3. Проверяется встречная реакция
+4. Если встречного лайка нет:
+
+   * матч отсутствует / либо статус `pending_response`
+   * отправляется **одно** email-уведомление (с защитой от дублей)
+5. Если встречный лайк найден:
+
+   * создается/обновляется `employment_matches.status = mutual_matched`
+   * далее `notified`, потом `closed/archived`
+
+---
+
+## 8. AI-сопоставление (финальная формулировка)
+
+## 8.1. Общий принцип
+
+Используется **гибридный AI-подход**:
+
+1. структурированные признаки (навыки, опыт, категория, город, формат занятости),
+2. embeddings + Qdrant (семантическое сходство),
+3. LLM/генеративная модель для объяснений и рекомендаций.
+
+Это соответствует ранее описанной AI-архитектуре. 
+
+## 8.2. Отдельный поисковый контур
+
+Для вакансий/кандидатов рекомендуется отдельная Qdrant-коллекция (`employment_index`), чтобы не смешивать с текущим поиском клубов/новостей. Это прямо отражено в AI-документе.  
+
+## 8.3. Что показывать пользователю
+
+Нельзя выдавать “сырой score модели” как процент.
+
+Система должна разделять:
+
+* `match_score` (внутренний)
+* `match_percent_display` (для UI)
+* `match_explanation` (почему такой результат)
+
+Это уже зафиксировано в AI-описании. 
+
+## 8.4. Нормализация навыков
+
+Обязателен справочник навыков и алиасы (`skills_catalog`, `skill_aliases`) + связки навыков кандидата/вакансии, иначе:
+
+* объяснения будут шумными,
+* аналитика по навыкам — неточной,
+* рекомендации по развитию — нестабильными.  
+
+---
+
+## 9. Аналитика vs персональные данные (исправление критичного риска)
+
+Это важный блок. Нужно явно разделить **операционные данные**, **AI-оценки** и **аналитику**.
+
+## 9.1. Что считается персональными данными / чувствительными данными системы
+
+* email
+* ссылки на профили (GitHub/LinkedIn/portfolio)
+* текст резюме / описание
+* история изменений резюме
+* индивидуальные AI-оценки по конкретному кандидату
+* история лайков/дизлайков/матчей
+
+## 9.2. Что можно отдавать в аналитику (вузам/HR) только в агрегированном виде
+
+* востребованные навыки по категориям/рынку
+* дефицит навыков по направлениям
+* средние уровни соответствия (по группам, не по человеку)
+* воронка (`просмотр → лайк → матч → контакт`) в агрегатах
+* динамика готовности по потокам/категориям/курсам
+
+## 9.3. Правила анонимизации и доступа (обязательно)
+
+1. **RBAC**:
+
+   * candidate видит только себя
+   * organization/HR видит кандидатов только в контексте вакансий/матчей/рекомендаций
+   * университет/аналитик получает только агрегаты
+2. **Агрегация с порогом**:
+
+   * не показывать метрики по группе меньше N (например, `<10`)
+3. **Без сырых резюме в аналитике**
+4. **Без персональных email/ссылок в аналитических endpoint’ах**
+5. **Логировать доступ к аналитике**
+6. **Отдельные endpoint’ы аналитики**, не смешивать с пользовательскими карточками
+
+## 9.4. Отдельная метрика “готовности”
+
+“Готовность студентов” не должна быть одним числом “процент совпадения”.
+
+Использовать составную метрику:
+
+* hard skills coverage
+* experience fit
+* semantic fit
+* profile completeness
+* confidence
+
+Это соответствует ранее зафиксированным AI-принципам. 
+
+---
+
+## 10. Идемпотентность и надежность (детализация)
+
+## 10.1. Почему это обязательно
+
+Telegram и сетевые ретраи могут вызвать:
+
+* дубли лайков/дизлайков
+* повторные email
+* двойные матчи
+* гонки при обновлении статусов
+
+Эта проблема уже правильно отмечена в спеке endpoint’ов. 
+
+## 10.2. Как реализовать (рекомендуемо)
+
+По аналогии с платежами:
+
+* таблица `employment_idempotency` (или общий reusable-механизм)
+* поля:
+
+  * `scope` (`reaction`)
+  * `idempotency_key`
+  * `request_hash`
+  * `response_code`
+  * `response_body`
+  * `created_at`
+* `UNIQUE (scope, idempotency_key)` + привязка к инициатору
+
+## 10.3. Поведение при повторном запросе
+
+* тот же `Idempotency-Key` + тот же `request_hash` → вернуть сохраненный ответ
+* тот же `Idempotency-Key` + другой `request_hash` → `409 IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD`
+
+---
+
+## 11. История изменений профиля (обязательно хранить)
+
+Система хранит историю изменений резюме/анкеты соискателя как версии.
+
+### Что это дает
+
+* отслеживание развития навыков
+* улучшение рекомендаций
+* аналитика динамики готовности
+* аудит изменений
+* возможное обучение/калибровка ранжирования в будущем
+
+Это согласуется с ранее предложенной AI/endpoint-моделью. 
+
+---
+
+## 12. MVP и этапность внедрения (уточненная)
+
+### MVP (обязательно)
+
+1. `POST /employment/tg/check`
+2. `POST /employment/organizations/validate-email`
+3. `POST /employment/organizations/register`
+4. `POST /employment/candidates/register`
+5. CRUD вакансий (`/employment/vacancies*`)
+6. `GET /employment/recommendations/vacancies-for-candidate`
+7. `GET /employment/vacancies/{id}/recommended-candidates`
+8. `POST /employment/reactions` (**idempotent**)
+9. `GET /employment/matches`
+10. `PATCH /employment/candidates/me` + `candidate_profile_history`
+
+### v1.1
+
+* `/employment/feed/next` (лента карточек)
+* `/employment/match-explanations`
+* `/employment/candidates/me/history`
+* лог уведомлений / статус уведомлений
+
+### v2
+
+* расширенная аналитика для вузов/HR
+* deeper AI explanations
+* карьерные рекомендации/курсы/skills gap карты
+* A/B эксперименты ранжирования
+
+(Этапность согласуется с ранее описанной дорожной картой endpoint’ов.) 
+
+---
+
+## 13. Краткое резюме исправлений (по вашим замечаниям)
+
+### Исправлено:
+
+* ✅ `club_member` описан полноценно (`club_id`, `user_id`, роль, статус, `joined_at`, `UNIQUE`)
+* ✅ реакциям добавлена **идемпотентность**
+* ✅ матчи **не удаляются**, а переводятся в статусы
+* ✅ добавлена граница между **аналитикой** и **персональными данными**
+* ✅ стабилизирован **naming** (`candidate_profile`, `position_title`, `target_*`, `email`)
+* ✅ сохранена ваша основная логика Telegram-бота и механика “как Дайвинчик”
+* ✅ AI-часть оформлена как гибридная и объяснимая (Qdrant + embeddings + LLM), с отдельным контуром поиска
+
+---
+
+Если хотите, следующим сообщением могу дать **сразу SQLAlchemy-модели (2.0 style)** для новых таблиц (`tg_info`, `candidate_profiles`, `vacancies`, `employment_reactions`, `employment_matches`, `candidate_profile_history`, `skills_*`) и **черновик Alembic-миграции**, уже с нормальными enum/unique/index.

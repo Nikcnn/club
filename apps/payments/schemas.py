@@ -28,6 +28,7 @@ class PaymentResponse(BaseModel):
     amount: Decimal
     status: PaymentStatus
     provider: PaymentProvider
+    provider_payment_id: str
     checkout_url: Optional[str] = None
     idempotency_key: Optional[str] = None
     created_at: datetime
