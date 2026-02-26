@@ -58,7 +58,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+# В продакшене лучше указать конкретные домены вместо ["*"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://clubit.netlify.app",
+        "https://club.api.nikcnn.xyz",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # Инициализация админ-панели (/admin)
 # setup_admin(app)
 
